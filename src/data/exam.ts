@@ -719,6 +719,582 @@ export const questions: Question[] = [
     examLens:
       "Termination is planned, evaluative, and supportive.",
   },
+  {
+    id: "eth-012",
+    domain: "ethics",
+    competency: "Confidentiality and collateral contacts",
+    skill: "reasoning",
+    difficulty: "applied",
+    tags: ["confidentiality", "collateral", "release of information"],
+    stem:
+      "A client's adult sibling calls and asks whether the client is attending therapy because the family is worried. What should the social worker do?",
+    options: [
+      "Confirm attendance but avoid sharing clinical details",
+      "Decline to confirm or deny services without the client's authorization",
+      "Ask the sibling to send concerns by email for the record",
+    ],
+    answerIndex: 1,
+    rationale:
+      "Even confirming that a person is a client can disclose protected information. The social worker should not confirm services without proper authorization or another valid exception.",
+    examLens:
+      "Confidentiality includes the fact of the client relationship.",
+  },
+  {
+    id: "eth-013",
+    domain: "ethics",
+    competency: "Documentation and continuity of care",
+    skill: "application",
+    difficulty: "foundation",
+    tags: ["documentation", "risk", "continuity"],
+    stem:
+      "After completing a suicide risk assessment, what documentation is MOST important for the social worker to include?",
+    options: [
+      "A detailed description of the social worker's personal feelings during the session",
+      "Risk factors, protective factors, consultation, plan, and follow-up steps",
+      "Only the client's diagnosis to avoid excessive documentation",
+    ],
+    answerIndex: 1,
+    rationale:
+      "Risk documentation should clearly support clinical reasoning, safety planning, consultation, and continuity of care.",
+    examLens:
+      "Document what another clinician would need to understand risk and next steps.",
+  },
+  {
+    id: "eth-014",
+    domain: "ethics",
+    competency: "Billing and service integrity",
+    skill: "reasoning",
+    difficulty: "applied",
+    tags: ["billing", "fraud", "agency ethics"],
+    stem:
+      "An agency manager asks a social worker to bill a family session even though only a brief voicemail was left for the family. What should the social worker do?",
+    options: [
+      "Bill the session because outreach is part of clinical service",
+      "Refuse to submit inaccurate billing and seek appropriate consultation or reporting channels",
+      "Submit the bill but document that the family did not answer",
+    ],
+    answerIndex: 1,
+    rationale:
+      "Billing must accurately reflect services provided. The social worker should not participate in fraudulent or misleading documentation.",
+    examLens:
+      "Administrative pressure does not justify false records.",
+  },
+  {
+    id: "eth-015",
+    domain: "ethics",
+    competency: "Self-disclosure and boundaries",
+    skill: "application",
+    difficulty: "applied",
+    tags: ["self-disclosure", "boundaries", "clinical judgment"],
+    stem:
+      "A grieving client asks whether the social worker has ever lost a parent. What is the BEST response?",
+    options: [
+      "Consider whether limited disclosure would serve the client's treatment needs and keep the focus on the client",
+      "Share detailed personal grief experiences to normalize the client's reaction",
+      "Refuse to answer and redirect immediately to symptoms",
+    ],
+    answerIndex: 0,
+    rationale:
+      "Self-disclosure should be purposeful, brief, and clinically useful. The client's needs remain central.",
+    examLens:
+      "Boundaries are not silence; they are clinical purpose and client focus.",
+  },
+  {
+    id: "eth-016",
+    domain: "ethics",
+    competency: "Supervision and client welfare",
+    skill: "reasoning",
+    difficulty: "exam-ready",
+    tags: ["supervision", "competence", "client welfare"],
+    stem:
+      "A supervisee is assigned a client with symptoms the supervisee has never treated. What should the supervisor do FIRST?",
+    options: [
+      "Allow the supervisee to proceed independently to build confidence",
+      "Assess the supervisee's competence and provide close supervision, training, or referral as needed",
+      "Tell the client that the supervisee is inexperienced",
+    ],
+    answerIndex: 1,
+    rationale:
+      "Supervisors must protect client welfare and ensure services are provided within competence, with supervision or referral when needed.",
+    examLens:
+      "Supervision questions prioritize client welfare and competence.",
+  },
+  {
+    id: "eth-017",
+    domain: "ethics",
+    competency: "Minor consent and confidentiality",
+    skill: "reasoning",
+    difficulty: "exam-ready",
+    tags: ["minor client", "confidentiality", "parents"],
+    stem:
+      "A parent demands detailed therapy notes from a 15-year-old's sessions. The adolescent has disclosed no imminent safety issue. What should the social worker do FIRST?",
+    options: [
+      "Automatically provide all notes because the parent is legally responsible",
+      "Clarify applicable law, consent agreements, and confidentiality limits before releasing information",
+      "Tell the adolescent to decide whether the parent can see the notes",
+    ],
+    answerIndex: 1,
+    rationale:
+      "Minor confidentiality depends on law, setting, consent, and treatment agreements. The worker should clarify these before releasing sensitive records.",
+    examLens:
+      "For minors, avoid absolutes; check legal and consent context.",
+  },
+  {
+    id: "eth-018",
+    domain: "ethics",
+    competency: "Professional boundaries and referrals",
+    skill: "application",
+    difficulty: "applied",
+    tags: ["dual relationship", "rural practice", "referral"],
+    stem:
+      "In a rural community, a social worker realizes a new client is also the worker's child's teacher. What is the BEST next step?",
+    options: [
+      "Continue services without mentioning the connection",
+      "Discuss the potential conflict, consider client choice, consult, and document the plan",
+      "Terminate immediately because any dual relationship is always prohibited",
+    ],
+    answerIndex: 1,
+    rationale:
+      "Some overlapping relationships may be unavoidable. The ethical response is transparency, consultation, client-centered planning, and careful documentation.",
+    examLens:
+      "Boundary questions often reward risk management over rigid all-or-nothing answers.",
+  },
+  {
+    id: "eth-019",
+    domain: "ethics",
+    competency: "Client access to records",
+    skill: "application",
+    difficulty: "foundation",
+    tags: ["records", "client rights", "documentation"],
+    stem:
+      "A client asks to review their clinical record. What is the BEST response?",
+    options: [
+      "Follow applicable law and agency policy while supporting the client's right to access appropriate records",
+      "Deny the request because therapy notes belong to the clinician",
+      "Allow the client to edit past notes to reflect their current perspective",
+    ],
+    answerIndex: 0,
+    rationale:
+      "Clients generally have rights related to record access, subject to legal and policy requirements. The worker should respond transparently and appropriately.",
+    examLens:
+      "Client rights questions usually favor access, clarity, and legal-policy alignment.",
+  },
+  {
+    id: "eth-020",
+    domain: "ethics",
+    competency: "Mandated reporting and adult safety",
+    skill: "reasoning",
+    difficulty: "exam-ready",
+    tags: ["elder abuse", "mandated reporting", "capacity"],
+    stem:
+      "An older adult with cognitive impairment reports that a caregiver takes money and withholds food. What should the social worker do?",
+    options: [
+      "Respect family privacy and monitor for more information",
+      "Make a report according to vulnerable adult protection requirements and address immediate safety needs",
+      "Confront the caregiver during the next family session",
+    ],
+    answerIndex: 1,
+    rationale:
+      "Possible abuse, exploitation, and neglect of a vulnerable adult require protective action according to mandated reporting laws and immediate safety assessment.",
+    examLens:
+      "Reasonable suspicion plus vulnerability means protective reporting, not family mediation first.",
+  },
+  {
+    id: "eth-021",
+    domain: "ethics",
+    competency: "Conflicts of interest",
+    skill: "reasoning",
+    difficulty: "applied",
+    tags: ["conflict of interest", "referral", "financial interest"],
+    stem:
+      "A social worker owns part of a private treatment program and routinely refers agency clients there without telling them about the financial interest. What is the ethical issue?",
+    options: [
+      "The referrals are ethical if the program has strong outcomes",
+      "The worker has a conflict of interest that requires disclosure and client-centered referral options",
+      "The issue only matters if clients complain",
+    ],
+    answerIndex: 1,
+    rationale:
+      "Financial interest can bias referrals. Ethical practice requires transparency, avoidance of exploitation, and meaningful alternatives.",
+    examLens:
+      "Client choice is compromised when hidden financial interests shape recommendations.",
+  },
+  {
+    id: "eth-022",
+    domain: "ethics",
+    competency: "Termination and abandonment",
+    skill: "application",
+    difficulty: "applied",
+    tags: ["termination", "abandonment", "continuity"],
+    stem:
+      "A social worker is leaving an agency in two weeks. What should the worker do to avoid client abandonment?",
+    options: [
+      "Stop scheduling sessions so clients adjust to the change",
+      "Notify clients appropriately, plan transitions, provide referrals, and document continuity steps",
+      "Transfer all clients without discussing the change to avoid distress",
+    ],
+    answerIndex: 1,
+    rationale:
+      "Ethical termination includes notice, transition planning, referral options, and documentation to protect continuity of care.",
+    examLens:
+      "Termination ethics are about planning and continuity, not abrupt withdrawal.",
+  },
+  {
+    id: "asm-011",
+    domain: "assessment",
+    competency: "Mental status assessment",
+    skill: "application",
+    difficulty: "foundation",
+    tags: ["mental status exam", "assessment", "orientation"],
+    stem:
+      "During an initial assessment, a client is unable to state the current date, location, or reason for the visit. What should the social worker assess further?",
+    options: [
+      "Orientation, cognition, possible intoxication, medical causes, and immediate safety",
+      "Only the client's motivation for treatment",
+      "The client's long-term career goals",
+    ],
+    answerIndex: 0,
+    rationale:
+      "Disorientation may reflect cognitive, medical, substance-related, or safety concerns and requires further assessment.",
+    examLens:
+      "Basic mental status findings can signal urgent assessment needs.",
+  },
+  {
+    id: "asm-012",
+    domain: "assessment",
+    competency: "Trauma assessment",
+    skill: "reasoning",
+    difficulty: "applied",
+    tags: ["trauma", "dissociation", "assessment"],
+    stem:
+      "A client reports losing time, feeling detached from their body, and becoming numb when reminded of past abuse. What should the social worker assess?",
+    options: [
+      "Dissociative symptoms, trauma history, safety, and current functioning",
+      "Oppositional behavior and poor motivation",
+      "A primary sleep disorder only",
+    ],
+    answerIndex: 0,
+    rationale:
+      "The symptoms suggest possible dissociation connected to trauma. Assessment should include safety, triggers, functioning, and trauma-informed formulation.",
+    examLens:
+      "Name the clinical pattern, then assess risk and functioning.",
+  },
+  {
+    id: "asm-013",
+    domain: "assessment",
+    competency: "Substance withdrawal risk",
+    skill: "reasoning",
+    difficulty: "exam-ready",
+    tags: ["withdrawal", "alcohol use", "medical risk"],
+    stem:
+      "A client who drinks heavily every day says they plan to stop immediately at home. What should the social worker assess FIRST?",
+    options: [
+      "Whether the client has a sponsor",
+      "Withdrawal risk and need for medical evaluation or supervised detoxification",
+      "The client's preferred relapse prevention workbook",
+    ],
+    answerIndex: 1,
+    rationale:
+      "Abrupt cessation after heavy alcohol use can create serious medical risk. The worker should assess withdrawal risk and connect the client to appropriate medical care.",
+    examLens:
+      "Substance questions may contain medical safety issues, especially withdrawal.",
+  },
+  {
+    id: "asm-014",
+    domain: "assessment",
+    competency: "Family assessment",
+    skill: "application",
+    difficulty: "foundation",
+    tags: ["family systems", "assessment", "roles"],
+    stem:
+      "In a family assessment, a parent says the oldest child is responsible for managing younger siblings and calming parental conflict. What concept should the social worker consider?",
+    options: ["Parentification", "Negative reinforcement", "Reaction formation"],
+    answerIndex: 0,
+    rationale:
+      "Parentification occurs when a child takes on adult caregiving or emotional responsibilities beyond their developmental role.",
+    examLens:
+      "Match family role patterns to the term, then consider impact on development.",
+  },
+  {
+    id: "asm-015",
+    domain: "assessment",
+    competency: "Diagnostic assessment",
+    skill: "reasoning",
+    difficulty: "applied",
+    tags: ["psychosis", "differential diagnosis", "substance use"],
+    stem:
+      "A young adult reports hearing voices for the first time after several days without sleep and heavy stimulant use. What should the social worker do NEXT?",
+    options: [
+      "Diagnose schizophrenia immediately",
+      "Assess substance use, sleep deprivation, medical factors, risk, and persistence of symptoms",
+      "Ignore the voices because stimulant use explains everything",
+    ],
+    answerIndex: 1,
+    rationale:
+      "First-episode psychotic symptoms require careful differential assessment, including substances, medical factors, sleep, safety, and symptom duration.",
+    examLens:
+      "Differential assessment avoids premature diagnosis.",
+  },
+  {
+    id: "asm-016",
+    domain: "assessment",
+    competency: "Strengths-based assessment",
+    skill: "application",
+    difficulty: "foundation",
+    tags: ["strengths", "resilience", "assessment"],
+    stem:
+      "A client describes housing instability, grief, and panic symptoms, but also identifies a trusted aunt, steady work history, and strong problem-solving skills. How should these details be used?",
+    options: [
+      "As protective factors and strengths in assessment and planning",
+      "As reasons the client does not need treatment",
+      "As unrelated background information",
+    ],
+    answerIndex: 0,
+    rationale:
+      "Strengths, supports, and coping skills are clinically relevant protective factors that should inform planning.",
+    examLens:
+      "Assessment includes strengths, not only pathology.",
+  },
+  {
+    id: "asm-017",
+    domain: "assessment",
+    competency: "Crisis assessment",
+    skill: "reasoning",
+    difficulty: "exam-ready",
+    tags: ["crisis", "homicidal ideation", "risk"],
+    stem:
+      "A client says they are furious at a coworker and 'might make them pay' but gives no details. What should the social worker do FIRST?",
+    options: [
+      "Explore intent, plan, access to means, target specificity, and protective factors",
+      "Tell the client anger is normal and continue with the treatment plan",
+      "Immediately call the coworker without further assessment",
+    ],
+    answerIndex: 0,
+    rationale:
+      "Ambiguous threats require structured violence risk assessment before determining protective actions.",
+    examLens:
+      "Assess specificity and imminence before choosing the intervention.",
+  },
+  {
+    id: "asm-018",
+    domain: "assessment",
+    competency: "Developmental and school assessment",
+    skill: "application",
+    difficulty: "applied",
+    tags: ["adolescents", "school", "assessment"],
+    stem:
+      "A 14-year-old's grades suddenly drop, they stop seeing friends, and they sleep most afternoons. What should the school social worker assess?",
+    options: [
+      "Depression, safety risk, bullying, substance use, family stressors, and academic supports",
+      "Only whether the student needs tutoring",
+      "Whether the student should be disciplined for low effort",
+    ],
+    answerIndex: 0,
+    rationale:
+      "Sudden functional changes in adolescence warrant broad assessment of mood, safety, peer context, substances, family, and school needs.",
+    examLens:
+      "A sudden decline in functioning calls for broad biopsychosocial assessment.",
+  },
+  {
+    id: "asm-019",
+    domain: "assessment",
+    competency: "Treatment readiness",
+    skill: "reasoning",
+    difficulty: "applied",
+    tags: ["readiness", "planning", "engagement"],
+    stem:
+      "A client referred for trauma treatment says, 'I want this fixed, but I do not want to talk about what happened.' What should the social worker assess?",
+    options: [
+      "Readiness, goals, coping capacity, safety, and acceptable starting points",
+      "Whether the client is lying about wanting help",
+      "Whether the client can be discharged for refusal",
+    ],
+    answerIndex: 0,
+    rationale:
+      "Ambivalence about trauma discussion is common. Assessment should clarify readiness, safety, coping resources, and collaborative starting points.",
+    examLens:
+      "Engagement and readiness shape sequencing.",
+  },
+  {
+    id: "int-011",
+    domain: "intervention",
+    competency: "Safety planning",
+    skill: "application",
+    difficulty: "exam-ready",
+    tags: ["safety plan", "suicide risk", "crisis"],
+    stem:
+      "A client with suicidal ideation denies current intent but has intermittent urges. Which intervention is MOST appropriate?",
+    options: [
+      "Develop a collaborative safety plan with warning signs, coping steps, supports, and crisis contacts",
+      "Avoid discussing suicide further to prevent reinforcing it",
+      "Give advice to think positively when urges occur",
+    ],
+    answerIndex: 0,
+    rationale:
+      "Safety planning is a concrete, collaborative intervention for managing future suicidal urges and connecting to supports.",
+    examLens:
+      "For ongoing risk, choose specific safety steps over vague reassurance.",
+  },
+  {
+    id: "int-012",
+    domain: "intervention",
+    competency: "De-escalation",
+    skill: "reasoning",
+    difficulty: "applied",
+    tags: ["de-escalation", "anger", "safety"],
+    stem:
+      "A client begins pacing, raising their voice, and blocking the office door. What should the social worker do FIRST?",
+    options: [
+      "Use calm de-escalation, maintain safety, and avoid physically confronting the client",
+      "Stand between the client and the door to regain control",
+      "Challenge the client to explain why they are being threatening",
+    ],
+    answerIndex: 0,
+    rationale:
+      "Escalating behavior requires attention to immediate safety, calm communication, space, and de-escalation.",
+    examLens:
+      "Do not escalate power struggles when safety is changing.",
+  },
+  {
+    id: "int-013",
+    domain: "intervention",
+    competency: "Psychoeducation",
+    skill: "application",
+    difficulty: "foundation",
+    tags: ["psychoeducation", "panic", "skills"],
+    stem:
+      "A client with panic attacks fears they are 'going crazy' when symptoms peak. What intervention is MOST appropriate early in treatment?",
+    options: [
+      "Provide psychoeducation about panic symptoms and teach grounding or breathing skills",
+      "Tell the client to avoid all situations where panic might occur",
+      "Begin exposure without explaining the symptoms",
+    ],
+    answerIndex: 0,
+    rationale:
+      "Early panic work often includes normalization, psychoeducation, and coping skills before more intensive exposure practice.",
+    examLens:
+      "Early intervention often combines education with practical skill building.",
+  },
+  {
+    id: "int-014",
+    domain: "intervention",
+    competency: "Solution-focused practice",
+    skill: "application",
+    difficulty: "foundation",
+    tags: ["solution-focused", "exceptions", "strengths"],
+    stem:
+      "A client says depression is present every day, but mornings are 'a little less impossible' when they walk with a neighbor. Which response is MOST solution-focused?",
+    options: [
+      "What is different on the mornings when walking helps even a little?",
+      "Why do you think depression started in childhood?",
+      "You should walk every morning without exception",
+    ],
+    answerIndex: 0,
+    rationale:
+      "Solution-focused practice explores exceptions, strengths, and small useful differences that can be expanded.",
+    examLens:
+      "Look for exceptions and client-generated solutions.",
+  },
+  {
+    id: "int-015",
+    domain: "intervention",
+    competency: "Case management",
+    skill: "reasoning",
+    difficulty: "applied",
+    tags: ["case management", "barriers", "advocacy"],
+    stem:
+      "A client repeatedly misses therapy because the bus route was cut and childcare is unstable. What intervention is MOST appropriate?",
+    options: [
+      "Explore practical barriers and coordinate transportation, childcare, or service alternatives",
+      "Interpret missed sessions as resistance",
+      "Close the case for noncompliance",
+    ],
+    answerIndex: 0,
+    rationale:
+      "Social work intervention includes addressing concrete barriers that interfere with access and engagement.",
+    examLens:
+      "Repeated missed care may signal access barriers, not just motivation.",
+  },
+  {
+    id: "int-016",
+    domain: "intervention",
+    competency: "Couples and family safety",
+    skill: "reasoning",
+    difficulty: "exam-ready",
+    tags: ["intimate partner violence", "couples therapy", "safety"],
+    stem:
+      "A couple requests joint counseling, but one partner privately reports fear of retaliation at home. What should the social worker do?",
+    options: [
+      "Proceed with joint sessions to improve communication",
+      "Prioritize safety assessment and avoid interventions that could increase danger",
+      "Ask the fearful partner to confront the other partner in session",
+    ],
+    answerIndex: 1,
+    rationale:
+      "When coercive control or retaliation risk is present, joint work can increase danger. Safety assessment and specialized planning come first.",
+    examLens:
+      "Do not use standard couples communication work when abuse risk is active.",
+  },
+  {
+    id: "int-017",
+    domain: "intervention",
+    competency: "Cultural humility in intervention",
+    skill: "application",
+    difficulty: "applied",
+    tags: ["culture", "engagement", "intervention planning"],
+    stem:
+      "A client wants to include a spiritual leader in treatment planning. What is the BEST response?",
+    options: [
+      "Explore the client's wishes and obtain appropriate consent before collaboration",
+      "Decline because spiritual supports are outside clinical practice",
+      "Contact the spiritual leader immediately without written permission",
+    ],
+    answerIndex: 0,
+    rationale:
+      "Culturally responsive practice can include client-identified supports when the client consents and confidentiality is protected.",
+    examLens:
+      "Client-defined supports can be part of ethical intervention.",
+  },
+  {
+    id: "int-018",
+    domain: "intervention",
+    competency: "Evaluation of intervention",
+    skill: "application",
+    difficulty: "foundation",
+    tags: ["evaluation", "outcomes", "treatment planning"],
+    stem:
+      "After six sessions, a client's anxiety scores and functioning have not improved. What should the social worker do?",
+    options: [
+      "Review progress with the client and adjust the treatment plan as needed",
+      "Continue the same approach because change takes time",
+      "End services because treatment has failed",
+    ],
+    answerIndex: 0,
+    rationale:
+      "Ongoing evaluation includes reviewing outcomes, client feedback, barriers, and adjusting interventions when needed.",
+    examLens:
+      "Evaluation is active: measure, discuss, adjust.",
+  },
+  {
+    id: "int-019",
+    domain: "intervention",
+    competency: "Advocacy and systems practice",
+    skill: "reasoning",
+    difficulty: "applied",
+    tags: ["advocacy", "systems", "discrimination"],
+    stem:
+      "A client is denied a housing accommodation related to a documented disability and asks for help. What should the social worker do?",
+    options: [
+      "Support the client in understanding rights, gathering documentation, and advocating through appropriate channels",
+      "Tell the client housing issues are outside clinical work",
+      "Contact the landlord and threaten legal action without the client's consent",
+    ],
+    answerIndex: 0,
+    rationale:
+      "Social work intervention may include advocacy, resource linkage, and support for client self-determination while respecting consent.",
+    examLens:
+      "Systems advocacy is part of practice when it supports client goals and rights.",
+  },
 ];
 
 export const flashcards: Flashcard[] = [

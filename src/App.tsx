@@ -354,7 +354,7 @@ function App() {
             <BookHeart className="brand-book" size={16} />
           </div>
           <div>
-            <p className="eyebrow">Independent 2026 Clinical prep</p>
+            <p className="eyebrow">Independent ASWB Clinical prep</p>
             <h1>ASWB Clinical Prep Studio</h1>
           </div>
         </div>
@@ -367,6 +367,7 @@ function App() {
                 key={item.id}
                 className={view === item.id ? "nav-button is-active" : "nav-button"}
                 type="button"
+                aria-current={view === item.id ? "page" : undefined}
                 onClick={() => setView(item.id)}
               >
                 <Icon aria-hidden="true" size={17} />
@@ -436,11 +437,12 @@ function Dashboard({
       <div className="hero-panel">
         <div className="hero-copy">
           <p className="eyebrow">Clinical readiness cockpit</p>
-          <h2>Practice the judgment the 2026 exam is built to measure.</h2>
-          <p className="hero-text">
-            Blueprint-weighted review, a 2,500-question original practice pool, rationales,
-            flashcards, and timed sprints for the ASWB 2026 blueprint or the 2018 pre-transition outline.
-          </p>
+          <h2>Master the clinical exam through targeted, scenario-based practice.</h2>
+          <div className="hero-points" aria-label="Study scope">
+            <span>2,500 original questions</span>
+            <span>Dual ASWB blueprints</span>
+            <span>Rationales and readiness tracking</span>
+          </div>
           <div className="hero-actions">
             <button className="primary-action" type="button" onClick={() => setView("practice")}>
               <Play aria-hidden="true" size={18} />
@@ -460,13 +462,13 @@ function Dashboard({
           />
           <div className="photo-stat">
             <span>{stats.readiness}%</span>
-            <small>Weighted readiness</small>
+            <small>Overall readiness</small>
           </div>
         </div>
       </div>
 
       <div className="stat-grid" aria-label="Progress summary">
-        <MetricCard icon={Trophy} label="Readiness" value={`${stats.readiness}%`} detail="Weighted by blueprint" />
+        <MetricCard icon={Trophy} label="Readiness" value={`${stats.readiness}%`} detail="Practice-weighted" />
         <MetricCard icon={Target} label="Accuracy" value={`${stats.overallAccuracy}%`} detail={`${stats.totalAttempts} attempts`} />
         <MetricCard icon={ClipboardCheck} label="Coverage" value={`${stats.coverage}%`} detail={`${stats.uniqueAnswered}/${questions.length} questions`} />
         <MetricCard
@@ -543,7 +545,7 @@ function Dashboard({
           <div className="section-heading">
             <div>
               <p className="eyebrow">2026 Clinical blueprint</p>
-              <h3>Domain balance</h3>
+              <h3>2026 domain balance</h3>
             </div>
             <span className="pill">{examFacts.scoredQuestions} scored items</span>
           </div>
@@ -1044,7 +1046,7 @@ function PracticeView({
               Submit
             </button>
             <button className="secondary-action" type="button" onClick={nextQuestion}>
-              Next
+              {revealed ? "Next" : "Skip"}
               <ChevronRight aria-hidden="true" size={18} />
             </button>
           </div>

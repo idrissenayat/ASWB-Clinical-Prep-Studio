@@ -17,6 +17,7 @@
   --olive: #6b6f2a;
   --gold: #b7832f;
   --shadow: 0 18px 50px rgba(30, 35, 27, 0.11);
+  --focus: 0 0 0 3px rgba(37, 124, 122, 0.24);
 }
 
 * {
@@ -57,6 +58,14 @@ button {
   touch-action: manipulation;
 }
 
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
 a {
   color: inherit;
 }
@@ -68,11 +77,18 @@ a {
 }
 
 .app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  margin-bottom: 26px;
+  margin-bottom: 20px;
+  padding: 10px 0;
+  background: rgba(244, 240, 232, 0.94);
+  border-bottom: 1px solid rgba(24, 34, 31, 0.08);
+  backdrop-filter: blur(14px);
 }
 
 .brand-lockup {
@@ -182,6 +198,7 @@ a {
   color: #fffdf8;
   background: #18221f;
   border-color: #18221f;
+  box-shadow: 0 10px 22px rgba(24, 34, 31, 0.14);
 }
 
 .nav-button:hover,
@@ -249,6 +266,26 @@ a {
   line-height: 1.65;
 }
 
+.hero-points {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.hero-points span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  color: #354039;
+  background: #fffaf1;
+  border: 1px solid #e2d5c5;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
 .hero-actions,
 .question-actions {
   display: flex;
@@ -280,6 +317,12 @@ a {
   background: #1f625f;
   border-color: #1f625f;
   box-shadow: 0 10px 22px rgba(31, 98, 95, 0.18);
+}
+
+.primary-action:focus-visible {
+  box-shadow:
+    var(--focus),
+    0 10px 22px rgba(31, 98, 95, 0.18);
 }
 
 .secondary-action {
@@ -522,6 +565,10 @@ input:disabled {
 
 .model-toggle small {
   color: #6a736d;
+}
+
+.model-toggle button.is-selected small {
+  color: #f3e6d0;
 }
 
 .area-select {
@@ -1259,8 +1306,13 @@ input:disabled {
   }
 
   .app-header {
+    position: static;
     gap: 14px;
     margin-bottom: 18px;
+    padding: 0;
+    background: transparent;
+    border-bottom: 0;
+    backdrop-filter: none;
   }
 
   .brand-lockup {
@@ -1321,6 +1373,11 @@ input:disabled {
     grid-template-columns: 1fr;
     width: 100%;
     margin-top: 18px;
+  }
+
+  .hero-points {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .primary-action,
@@ -1489,6 +1546,24 @@ input:disabled {
   .task-card {
     min-height: 0;
     padding: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-button,
+  .primary-action,
+  .secondary-action,
+  .danger-action,
+  .text-action,
+  .icon-action,
+  .mini-reset,
+  .area-select select,
+  .model-toggle button,
+  .segmented-control button,
+  .sim-options button,
+  .option-button,
+  .task-check {
+    transition: none;
   }
 }
 

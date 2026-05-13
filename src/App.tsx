@@ -531,6 +531,11 @@ function PracticeView({
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [confidence, setConfidence] = useState(3);
+  const [sessionStats, setSessionStats] = useState({
+    answered: 0,
+    correct: 0,
+    review: 0,
+  });
 
   const filteredQuestions = useMemo(() => {
     if (domainFilter === "all") return questions;
@@ -540,6 +545,8 @@ function PracticeView({
   const question = filteredQuestions[index % filteredQuestions.length];
   const domain = domainMap.get(question.domain)!;
   const isBookmarked = progress.bookmarks.includes(question.id);
+  const currentQuestionNumber = (index % filteredQuestions.length) + 1;
+  const positionPercent = Math.round((currentQuestionNumber / filteredQuestions.length) * 100);
 
   const resetQuestionState = () => {
     setSelectedIndex(null);
@@ -555,7 +562,13 @@ function PracticeView({
 
   const submitAnswer = () => {
     if (selectedIndex === null || revealed) return;
+    const correct = selectedIndex === question.answerIndex;
     recordAttempt(question, selectedIndex, confidence);
+    setSessionStats((current) => ({
+      answered: current.answered + 1,
+      correct: current.correct + (correct ? 1 : 0),
+      review: current.review + (correct ? 0 : 1),
+    }));
     setRevealed(true);
   };
 
@@ -590,6 +603,41 @@ function PracticeView({
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="practice-progress-panel" aria-label="Practice progress">
+        <div className="practice-position">
+          <span>Current question</span>
+          <strong>
+            {currentQuestionNumber} of {filteredQuestions.length}
+          </strong>
+        </div>
+        <div className="practice-progress-track" aria-hidden="true">
+          <span style={{ width: `${positionPercent}%` }} />
+        </div>
+        <div className="practice-score-grid">
+          <div>
+            <span>Answered</span>
+            <strong>{sessionStats.answered}</strong>
+          </div>
+          <div>
+            <span>Correct</span>
+            <strong>{sessionStats.correct}</strong>
+          </div>
+          <div>
+            <span>Needs review</span>
+            <strong>{sessionStats.review}</strong>
+          </div>
+        </div>
+        <button
+          className="mini-reset"
+          type="button"
+          onClick={() => setSessionStats({ answered: 0, correct: 0, review: 0 })}
+          aria-label="Reset practice session counters"
+        >
+          <RotateCcw aria-hidden="true" size={16} />
+          Reset
+        </button>
       </div>
 
       <div className="practice-layout">

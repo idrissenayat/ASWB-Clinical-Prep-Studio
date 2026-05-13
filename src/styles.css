@@ -150,6 +150,7 @@ a {
 .danger-action,
 .text-action,
 .icon-action,
+.mini-reset,
 .segmented-control button,
 .sim-options button,
 .option-button,
@@ -187,6 +188,7 @@ a {
 .danger-action:hover,
 .text-action:hover,
 .icon-action:hover,
+.mini-reset:hover,
 .segmented-control button:hover,
 .sim-options button:hover,
 .option-button:hover,
@@ -618,6 +620,84 @@ input:disabled {
   border-color: #18221f;
 }
 
+.practice-progress-panel {
+  display: grid;
+  grid-template-columns: minmax(170px, 0.75fr) minmax(160px, 1fr) minmax(330px, 1.4fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  background: rgba(255, 253, 248, 0.94);
+  border: 1px solid rgba(24, 34, 31, 0.11);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.practice-position,
+.practice-score-grid div {
+  display: grid;
+  gap: 3px;
+}
+
+.practice-position span,
+.practice-score-grid span {
+  color: #6c756e;
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.practice-position strong {
+  font-size: 1.35rem;
+  line-height: 1.05;
+}
+
+.practice-progress-track {
+  height: 12px;
+  overflow: hidden;
+  background: #e7dece;
+  border-radius: 8px;
+}
+
+.practice-progress-track span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #257c7a 0%, #6b6f2a 100%);
+  border-radius: 8px;
+}
+
+.practice-score-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.practice-score-grid div {
+  min-height: 66px;
+  padding: 10px;
+  background: #fffaf1;
+  border: 1px solid #e5d8c7;
+  border-radius: 8px;
+}
+
+.practice-score-grid strong {
+  font-size: 1.7rem;
+  line-height: 1;
+}
+
+.mini-reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  gap: 7px;
+  padding: 0 11px;
+  color: #46524a;
+  background: #f7f1e7;
+  border-color: #d8cdbd;
+  font-weight: 800;
+}
+
 .question-panel {
   display: grid;
   gap: 18px;
@@ -962,6 +1042,10 @@ input:disabled {
     grid-template-columns: 1fr;
   }
 
+  .practice-progress-panel {
+    grid-template-columns: 1fr;
+  }
+
   .sim-progress {
     justify-content: flex-start;
   }
@@ -1079,6 +1163,24 @@ input:disabled {
   .planner-grid,
   .sim-options {
     grid-template-columns: 1fr;
+  }
+
+  .practice-progress-panel {
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .practice-score-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .practice-score-grid div {
+    min-height: 58px;
+  }
+
+  .mini-reset {
+    width: 100%;
+    min-height: 44px;
   }
 
   .metric-card {

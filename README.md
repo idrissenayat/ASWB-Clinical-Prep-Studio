@@ -18,6 +18,7 @@ http://127.0.0.1:5173/
 ## Features
 
 - Blueprint-weighted readiness dashboard
+- Dashboard knowledge map by domain and study area
 - 2,500 original exam-style Clinical practice questions with rationales
 - Switch between testing on/after August 3, 2026 and testing before August 3, 2026
 - Focused practice by 2026 exam area or pre-2026 Clinical study area, including IA through IVC

@@ -73,6 +73,7 @@ const navItems: Array<{ id: View; label: string; icon: typeof BarChart3 }> = [
 ];
 
 const domainMap = new Map(domains.map((domain) => [domain.id, domain]));
+const questionMap = new Map(questions.map((question) => [question.id, question]));
 const areaKey = (examModel: ExamModelId, areaId: ExamAreaId) => `${examModel}:${areaId}`;
 const getQuestionArea = (question: Question, examModel: ExamModelId) =>
   examModel === "2026" ? question.area2026 : question.area;
@@ -183,6 +184,41 @@ function buildStats(progress: ProgressState) {
     readiness,
     recentMisses,
   };
+}
+
+function buildAreaStats(progress: ProgressState, examModel: ExamModelId) {
+  return examAreasByModel[examModel].map((area) => {
+    const domain = domainMap.get(area.domain)!;
+    const areaQuestions = questions.filter((question) => getQuestionArea(question, examModel) === area.id);
+    const attempts = progress.attempts.filter((attempt) => {
+      const question = questionMap.get(attempt.questionId);
+      if (!question) return attempt.examModel === examModel && attempt.area === area.id;
+      return getQuestionArea(question, examModel) === area.id;
+    });
+    const correct = attempts.filter((attempt) => attempt.correct).length;
+    const unique = new Set(
+      attempts
+        .map((attempt) => questionMap.get(attempt.questionId))
+        .filter((question): question is Question => Boolean(question))
+        .filter((question) => getQuestionArea(question, examModel) === area.id)
+        .map((question) => question.id),
+    ).size;
+    const accuracy = attempts.length ? Math.round((correct / attempts.length) * 100) : 0;
+    const coverage = areaQuestions.length ? Math.round((unique / areaQuestions.length) * 100) : 0;
+    const readiness = Math.round(accuracy * 0.7 + coverage * 0.3);
+
+    return {
+      area,
+      domain,
+      questionCount: areaQuestions.length,
+      attempts: attempts.length,
+      correct,
+      unique,
+      accuracy,
+      coverage,
+      readiness,
+    };
+  });
 }
 
 function balanceQuotas<T extends { count: number }>(quotas: T[], size: number) {
@@ -382,6 +418,18 @@ function Dashboard({
   resetProgress: () => void;
 }) {
   const daysUntil = getDaysUntil(progress.targetDate);
+  const [dashboardModel, setDashboardModel] = useState<ExamModelId>(defaultExamModel);
+  const selectedDashboardModel = examModels.find((model) => model.id === dashboardModel)!;
+  const areaStats = useMemo(
+    () => buildAreaStats(progress, dashboardModel),
+    [dashboardModel, progress],
+  );
+  const areaGroups = domains
+    .map((domain) => ({
+      domain,
+      areas: areaStats.filter((item) => item.area.domain === domain.id),
+    }))
+    .filter((group) => group.areas.length);
 
   return (
     <section className="view-stack">
@@ -428,6 +476,67 @@ function Dashboard({
           detail={progress.targetDate || "Choose a date"}
         />
       </div>
+
+      <section className="panel study-area-panel">
+        <div className="section-heading study-area-heading">
+          <div>
+            <p className="eyebrow">Domain knowledge</p>
+            <h3>Readiness by study area</h3>
+          </div>
+          <ExamModelSelector value={dashboardModel} onChange={setDashboardModel} />
+        </div>
+        <p className="muted study-area-model-note">
+          {selectedDashboardModel.blueprint}. Readiness blends answer accuracy with how much of each
+          study area the student has covered.
+        </p>
+
+        <div className="study-area-groups">
+          {areaGroups.map((group) => (
+            <section className="study-area-domain" key={group.domain.id}>
+              <div className="study-area-domain-heading">
+                <span style={{ backgroundColor: group.domain.color }} aria-hidden="true" />
+                <div>
+                  <h4>{group.domain.name}</h4>
+                  <p>{group.domain.focus}</p>
+                </div>
+                <strong>{group.areas.length} areas</strong>
+              </div>
+
+              <div className="study-area-list">
+                {group.areas.map((item) => (
+                  <article className="study-area-row" key={item.area.id}>
+                    <div className="study-area-topline">
+                      <span className="study-area-code" style={{ borderColor: group.domain.color }}>
+                        {item.area.id}
+                      </span>
+                      <div>
+                        <h5>{item.area.name}</h5>
+                        <p>{item.area.focus}</p>
+                      </div>
+                      <strong>{item.readiness}%</strong>
+                    </div>
+                    <div className="bar-track compact" aria-hidden="true">
+                      <span
+                        className="bar-fill"
+                        style={{
+                          width: `${item.readiness}%`,
+                          backgroundColor: group.domain.color,
+                        }}
+                      />
+                    </div>
+                    <div className="domain-meta">
+                      <span>{item.accuracy}% accuracy</span>
+                      <span>{item.coverage}% coverage</span>
+                      <span>{item.unique}/{item.questionCount} answered</span>
+                      <span>{item.attempts} attempts</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      </section>
 
       <div className="content-grid">
         <section className="panel">

@@ -324,8 +324,8 @@ function Dashboard({
           <p className="eyebrow">Clinical readiness cockpit</p>
           <h2>Practice the judgment the 2026 exam is built to measure.</h2>
           <p className="hero-text">
-            Blueprint-weighted review, original clinical scenarios, rationales, flashcards,
-            and a timer tuned to the 122-question, four-hour format.
+            Blueprint-weighted review, a 2,500-question original practice pool, rationales,
+            flashcards, and timed sprints tuned to the 122-question, four-hour format.
           </p>
           <div className="hero-actions">
             <button className="primary-action" type="button" onClick={() => setView("practice")}>
@@ -531,6 +531,7 @@ function PracticeView({
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [confidence, setConfidence] = useState(3);
+  const [practiceQueue, setPracticeQueue] = useState<Question[]>(() => shuffle(questions));
   const [sessionStats, setSessionStats] = useState({
     answered: 0,
     correct: 0,
@@ -542,11 +543,21 @@ function PracticeView({
     return questions.filter((question) => question.domain === domainFilter);
   }, [domainFilter]);
 
-  const question = filteredQuestions[index % filteredQuestions.length];
+  const activeQuestions = practiceQueue.length ? practiceQueue : filteredQuestions;
+  const question = activeQuestions[index % activeQuestions.length];
   const domain = domainMap.get(question.domain)!;
   const isBookmarked = progress.bookmarks.includes(question.id);
-  const currentQuestionNumber = (index % filteredQuestions.length) + 1;
-  const positionPercent = Math.round((currentQuestionNumber / filteredQuestions.length) * 100);
+  const currentQuestionNumber = (index % activeQuestions.length) + 1;
+  const positionPercent = Math.round((currentQuestionNumber / activeQuestions.length) * 100);
+
+  useEffect(() => {
+    setPracticeQueue(shuffle(filteredQuestions));
+    setIndex(0);
+    setSelectedIndex(null);
+    setRevealed(false);
+    setConfidence(3);
+    setSessionStats({ answered: 0, correct: 0, review: 0 });
+  }, [filteredQuestions]);
 
   const resetQuestionState = () => {
     setSelectedIndex(null);
@@ -556,7 +567,12 @@ function PracticeView({
 
   const changeFilter = (domainId: DomainId | "all") => {
     setDomainFilter(domainId);
+  };
+
+  const startNewPracticeSet = () => {
+    setPracticeQueue(shuffle(filteredQuestions));
     setIndex(0);
+    setSessionStats({ answered: 0, correct: 0, review: 0 });
     resetQuestionState();
   };
 
@@ -573,7 +589,12 @@ function PracticeView({
   };
 
   const nextQuestion = () => {
-    setIndex((current) => (current + 1) % filteredQuestions.length);
+    if (currentQuestionNumber >= activeQuestions.length) {
+      setPracticeQueue(shuffle(filteredQuestions));
+      setIndex(0);
+    } else {
+      setIndex((current) => current + 1);
+    }
     resetQuestionState();
   };
 
@@ -609,7 +630,7 @@ function PracticeView({
         <div className="practice-position">
           <span>Current question</span>
           <strong>
-            {currentQuestionNumber} of {filteredQuestions.length}
+            {currentQuestionNumber} of {activeQuestions.length}
           </strong>
         </div>
         <div className="practice-progress-track" aria-hidden="true">
@@ -632,11 +653,11 @@ function PracticeView({
         <button
           className="mini-reset"
           type="button"
-          onClick={() => setSessionStats({ answered: 0, correct: 0, review: 0 })}
-          aria-label="Reset practice session counters"
+          onClick={startNewPracticeSet}
+          aria-label="Start a new shuffled practice set"
         >
           <RotateCcw aria-hidden="true" size={16} />
-          Reset
+          New set
         </button>
       </div>
 
@@ -819,7 +840,7 @@ function SimulationView({
           <section className="panel">
             <h3>Simulation length</h3>
             <div className="sim-options" aria-label="Simulation length">
-              {[12, 24, 30].map((option) => (
+              {[12, 24, 60, 122].map((option) => (
                 <button
                   key={option}
                   type="button"

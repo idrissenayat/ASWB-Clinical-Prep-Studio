@@ -1,3 +1,5 @@
+import { generatedQuestions } from "./generatedQuestions";
+
 export type DomainId = "ethics" | "assessment" | "intervention";
 export type SkillType = "recall" | "application" | "reasoning";
 export type Difficulty = "foundation" | "applied" | "exam-ready";
@@ -91,7 +93,7 @@ export const domains: Domain[] = [
   },
 ];
 
-export const questions: Question[] = [
+export const curatedQuestions: Question[] = [
   {
     id: "eth-001",
     domain: "ethics",
@@ -2524,6 +2526,8 @@ export const questions: Question[] = [
       "Systems practice builds client and community capacity, not dependency.",
   },
 ];
+
+export const questions: Question[] = [...curatedQuestions, ...generatedQuestions];
 
 export const flashcards: Flashcard[] = [
   {

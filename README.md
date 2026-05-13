@@ -18,7 +18,7 @@ http://127.0.0.1:5173/
 ## Features
 
 - Blueprint-weighted readiness dashboard
-- Original exam-style Clinical questions with rationales
+- 2,500 original exam-style Clinical practice questions with rationales
 - Timed simulation sprints using the 2026 pacing ratio
 - Flashcards for high-yield clinical judgment
 - Study planner with browser-local progress

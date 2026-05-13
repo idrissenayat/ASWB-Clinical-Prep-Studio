@@ -151,6 +151,7 @@ a {
 .text-action,
 .icon-action,
 .mini-reset,
+.area-select select,
 .segmented-control button,
 .sim-options button,
 .option-button,
@@ -441,7 +442,8 @@ input:disabled {
 }
 
 .pill,
-.domain-chip {
+.domain-chip,
+.area-chip {
   display: inline-flex;
   align-items: center;
   min-height: 30px;
@@ -451,6 +453,49 @@ input:disabled {
   border: 1px solid #d8cdbd;
   border-radius: 8px;
   font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.area-chip {
+  color: #1f625f;
+  background: #eef8f4;
+  border-color: #b8d9d4;
+}
+
+.practice-filter-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 10px 12px;
+}
+
+.filter-group,
+.area-select {
+  display: grid;
+  gap: 6px;
+}
+
+.filter-label,
+.area-select span {
+  color: #6c756e;
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.area-select {
+  min-width: min(360px, 100%);
+}
+
+.area-select select {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  color: #354039;
+  background: #fffaf1;
+  border-color: #d9d0c2;
   font-weight: 800;
 }
 
@@ -863,6 +908,10 @@ input:disabled {
   font-weight: 800;
 }
 
+.sim-area-row {
+  max-width: 420px;
+}
+
 .sim-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -1022,6 +1071,10 @@ input:disabled {
     justify-content: flex-start;
   }
 
+  .practice-filter-panel {
+    justify-content: flex-start;
+  }
+
   .hero-panel,
   .content-grid,
   .practice-layout,
@@ -1157,6 +1210,13 @@ input:disabled {
 
   .segmented-control {
     justify-content: flex-start;
+  }
+
+  .practice-filter-panel,
+  .filter-group,
+  .area-select,
+  .sim-area-row {
+    width: 100%;
   }
 
   .stat-grid,

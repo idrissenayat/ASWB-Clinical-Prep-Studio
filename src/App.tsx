@@ -23,8 +23,10 @@ import {
 } from "lucide-react";
 import {
   DomainId,
+  ExamAreaId,
   Question,
   domains,
+  examAreas,
   examFacts,
   flashcards,
   planTasks,
@@ -32,10 +34,12 @@ import {
 } from "./data/exam";
 
 type View = "dashboard" | "practice" | "simulation" | "flashcards" | "planner";
+type AreaFilter = ExamAreaId | "all";
 
 interface Attempt {
   questionId: string;
   domain: DomainId;
+  area?: ExamAreaId;
   selectedIndex: number;
   correct: boolean;
   confidence: number;
@@ -65,6 +69,13 @@ const navItems: Array<{ id: View; label: string; icon: typeof BarChart3 }> = [
 ];
 
 const domainMap = new Map(domains.map((domain) => [domain.id, domain]));
+const examAreaMap = new Map(examAreas.map((area) => [area.id, area]));
+const examAreaCounts = new Map(
+  examAreas.map((area) => [
+    area.id,
+    questions.filter((question) => question.area === area.id).length,
+  ]),
+);
 
 function useLocalStorage<T>(key: string, initialValue: T) {
   const [value, setValue] = useState<T>(() => {
@@ -161,7 +172,11 @@ function buildStats(progress: ProgressState) {
   };
 }
 
-function makeSimulation(size: number) {
+function makeSimulation(size: number, areaFilter: AreaFilter = "all") {
+  if (areaFilter !== "all") {
+    return shuffle(questions.filter((question) => question.area === areaFilter)).slice(0, size);
+  }
+
   const quotas = domains.map((domain) => ({
     domain,
     count: Math.max(1, Math.round(size * (domain.percent / 100))),
@@ -201,6 +216,7 @@ function App() {
         {
           questionId: question.id,
           domain: question.domain,
+          area: question.area,
           selectedIndex,
           correct: selectedIndex === question.answerIndex,
           confidence,
@@ -517,6 +533,43 @@ function MetricCard({
   );
 }
 
+function AreaSelect({
+  domainFilter,
+  value,
+  onChange,
+}: {
+  domainFilter: DomainId | "all";
+  value: AreaFilter;
+  onChange: (value: AreaFilter) => void;
+}) {
+  const availableAreas =
+    domainFilter === "all"
+      ? examAreas
+      : examAreas.filter((area) => area.domain === domainFilter);
+  const allLabel =
+    domainFilter === "all"
+      ? "All exam areas"
+      : `All ${domainMap.get(domainFilter)!.shortName} areas`;
+
+  return (
+    <label className="area-select">
+      <span>Exam area</span>
+      <select
+        aria-label="Exam area"
+        value={value}
+        onChange={(event) => onChange(event.target.value as AreaFilter)}
+      >
+        <option value="all">{allLabel}</option>
+        {availableAreas.map((area) => (
+          <option key={area.id} value={area.id}>
+            {area.id} - {area.name} ({examAreaCounts.get(area.id)})
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function PracticeView({
   progress,
   recordAttempt,
@@ -527,6 +580,7 @@ function PracticeView({
   toggleBookmark: (questionId: string) => void;
 }) {
   const [domainFilter, setDomainFilter] = useState<DomainId | "all">("all");
+  const [areaFilter, setAreaFilter] = useState<AreaFilter>("all");
   const [index, setIndex] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(false);
@@ -539,13 +593,17 @@ function PracticeView({
   });
 
   const filteredQuestions = useMemo(() => {
-    if (domainFilter === "all") return questions;
-    return questions.filter((question) => question.domain === domainFilter);
-  }, [domainFilter]);
+    return questions.filter((question) => {
+      const matchesDomain = domainFilter === "all" || question.domain === domainFilter;
+      const matchesArea = areaFilter === "all" || question.area === areaFilter;
+      return matchesDomain && matchesArea;
+    });
+  }, [areaFilter, domainFilter]);
 
   const activeQuestions = practiceQueue.length ? practiceQueue : filteredQuestions;
   const question = activeQuestions[index % activeQuestions.length];
   const domain = domainMap.get(question.domain)!;
+  const area = examAreaMap.get(question.area)!;
   const isBookmarked = progress.bookmarks.includes(question.id);
   const currentQuestionNumber = (index % activeQuestions.length) + 1;
   const positionPercent = Math.round((currentQuestionNumber / activeQuestions.length) * 100);
@@ -567,6 +625,14 @@ function PracticeView({
 
   const changeFilter = (domainId: DomainId | "all") => {
     setDomainFilter(domainId);
+    setAreaFilter("all");
+  };
+
+  const changeAreaFilter = (nextArea: AreaFilter) => {
+    setAreaFilter(nextArea);
+    if (nextArea !== "all") {
+      setDomainFilter(examAreaMap.get(nextArea)!.domain);
+    }
   };
 
   const startNewPracticeSet = () => {
@@ -605,24 +671,34 @@ function PracticeView({
           <p className="eyebrow">Question lab</p>
           <h2>Practice with rationales</h2>
         </div>
-        <div className="segmented-control" aria-label="Domain filter">
-          <button
-            type="button"
-            className={domainFilter === "all" ? "is-selected" : ""}
-            onClick={() => changeFilter("all")}
-          >
-            All
-          </button>
-          {domains.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={domainFilter === item.id ? "is-selected" : ""}
-              onClick={() => changeFilter(item.id)}
-            >
-              {item.shortName}
-            </button>
-          ))}
+        <div className="practice-filter-panel">
+          <div className="filter-group">
+            <span className="filter-label">Domain</span>
+            <div className="segmented-control" aria-label="Domain filter">
+              <button
+                type="button"
+                className={domainFilter === "all" ? "is-selected" : ""}
+                onClick={() => changeFilter("all")}
+              >
+                All
+              </button>
+              {domains.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={domainFilter === item.id ? "is-selected" : ""}
+                  onClick={() => changeFilter(item.id)}
+                >
+                  {item.shortName}
+                </button>
+              ))}
+            </div>
+          </div>
+          <AreaSelect
+            domainFilter={domainFilter}
+            value={areaFilter}
+            onChange={changeAreaFilter}
+          />
         </div>
       </div>
 
@@ -666,6 +742,9 @@ function PracticeView({
           <div className="question-meta">
             <span className="domain-chip" style={{ borderColor: domain.color }}>
               {domain.name}
+            </span>
+            <span className="area-chip" title={area.name}>
+              {question.area} · {area.name}
             </span>
             <span>{question.skill}</span>
             <span>{question.difficulty}</span>
@@ -773,6 +852,7 @@ function SimulationView({
   recordAttempt: (question: Question, selectedIndex: number, confidence: number) => void;
 }) {
   const [size, setSize] = useState(24);
+  const [areaFilter, setAreaFilter] = useState<AreaFilter>("all");
   const [simulationQuestions, setSimulationQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [flagged, setFlagged] = useState<string[]>([]);
@@ -783,6 +863,8 @@ function SimulationView({
   const activeQuestion = simulationQuestions[index];
   const selectedIndex = activeQuestion ? answers[activeQuestion.id] : undefined;
   const timerMinutes = Math.max(5, Math.round((size / examFacts.totalQuestions) * examFacts.timeLimitMinutes));
+  const simulationFocus =
+    areaFilter === "all" ? null : examAreaMap.get(areaFilter)!;
 
   useEffect(() => {
     if (!simulationQuestions.length || finished) return undefined;
@@ -801,7 +883,7 @@ function SimulationView({
   }, [simulationQuestions.length, finished]);
 
   const startSimulation = () => {
-    const nextQuestions = makeSimulation(size);
+    const nextQuestions = makeSimulation(size, areaFilter);
     setSimulationQuestions(nextQuestions);
     setAnswers({});
     setFlagged([]);
@@ -852,6 +934,13 @@ function SimulationView({
                 </button>
               ))}
             </div>
+            <div className="sim-area-row">
+              <AreaSelect
+                domainFilter="all"
+                value={areaFilter}
+                onChange={setAreaFilter}
+              />
+            </div>
             <button className="primary-action" type="button" onClick={startSimulation}>
               <Play aria-hidden="true" size={18} />
               Start simulation
@@ -862,8 +951,9 @@ function SimulationView({
             <p className="eyebrow">Real exam structure</p>
             <h3>{examFacts.totalQuestions} questions in {formatTime(examFacts.timeLimitMinutes)}</h3>
             <p className="muted">
-              This local sprint preserves the 2026 blueprint weighting and pacing ratio while using
-              the original question bank included in this app.
+              {simulationFocus
+                ? `This focused sprint pulls from ${simulationFocus.id}: ${simulationFocus.name}.`
+                : "This local sprint preserves the 2026 blueprint weighting and pacing ratio while using the original question bank included in this app."}
             </p>
           </aside>
         </div>
@@ -927,6 +1017,7 @@ function SimulationView({
   }
 
   const domain = domainMap.get(activeQuestion.domain)!;
+  const area = examAreaMap.get(activeQuestion.area)!;
 
   return (
     <section className="view-stack">
@@ -948,6 +1039,9 @@ function SimulationView({
         <div className="question-meta">
           <span className="domain-chip" style={{ borderColor: domain.color }}>
             {domain.name}
+          </span>
+          <span className="area-chip" title={area.name}>
+            {activeQuestion.area} · {area.name}
           </span>
           <span>{activeQuestion.skill}</span>
           <button

@@ -19,7 +19,8 @@ http://127.0.0.1:5173/
 
 - Blueprint-weighted readiness dashboard
 - 2,500 original exam-style Clinical practice questions with rationales
-- Timed simulation sprints using the 2026 pacing ratio
+- Focused practice by 2026 Clinical exam area, including IA, IB, IC, IIA, IIB, IIC, IIIA, IIIB, IIIC, and IIID
+- Timed simulation sprints using the 2026 pacing ratio or a selected exam area
 - Flashcards for high-yield clinical judgment
 - Study planner with browser-local progress
 - Bookmarks, attempt history, accuracy, and coverage saved in `localStorage`

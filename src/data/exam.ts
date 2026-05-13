@@ -1,6 +1,17 @@
 import { generatedQuestions } from "./generatedQuestions";
 
 export type DomainId = "ethics" | "assessment" | "intervention";
+export type ExamAreaId =
+  | "IA"
+  | "IB"
+  | "IC"
+  | "IIA"
+  | "IIB"
+  | "IIC"
+  | "IIIA"
+  | "IIIB"
+  | "IIIC"
+  | "IIID";
 export type SkillType = "recall" | "application" | "reasoning";
 export type Difficulty = "foundation" | "applied" | "exam-ready";
 
@@ -17,6 +28,7 @@ export interface Domain {
 export interface Question {
   id: string;
   domain: DomainId;
+  area: ExamAreaId;
   competency: string;
   skill: SkillType;
   difficulty: Difficulty;
@@ -26,6 +38,17 @@ export interface Question {
   answerIndex: number;
   rationale: string;
   examLens: string;
+}
+
+export type QuestionInput = Omit<Question, "area"> & {
+  area?: ExamAreaId;
+};
+
+export interface ExamArea {
+  id: ExamAreaId;
+  domain: DomainId;
+  name: string;
+  focus: string;
 }
 
 export interface Flashcard {
@@ -93,7 +116,70 @@ export const domains: Domain[] = [
   },
 ];
 
-export const curatedQuestions: Question[] = [
+export const examAreas: ExamArea[] = [
+  {
+    id: "IA",
+    domain: "ethics",
+    name: "Ethical Principles and Responsibilities",
+    focus: "Confidentiality, informed consent, ethical dilemmas, professional values, competence, and self-care.",
+  },
+  {
+    id: "IB",
+    domain: "ethics",
+    name: "Ethical Service Delivery",
+    focus: "Self-determination, boundaries, mandated reporting, documentation, billing, termination, technology, and supervision ethics.",
+  },
+  {
+    id: "IC",
+    domain: "ethics",
+    name: "Diversity and Social Justice",
+    focus: "Anti-oppressive practice, social justice, identity, access, privilege, bias, immigration, and marginalized communities.",
+  },
+  {
+    id: "IIA",
+    domain: "assessment",
+    name: "Assessment Concepts",
+    focus: "Trauma, family dynamics, abuse, mental health indicators, substance use, development, culture, and person-in-environment factors.",
+  },
+  {
+    id: "IIB",
+    domain: "assessment",
+    name: "Assessment Methods and Techniques",
+    focus: "Risk assessment, interviewing, DSM use, mental status exams, collateral data, strengths, motivation, and confidential information gathering.",
+  },
+  {
+    id: "IIC",
+    domain: "assessment",
+    name: "Assessment Practices",
+    focus: "Resources, goal and treatment planning, triage, modality selection, medications, cultural planning, and termination readiness.",
+  },
+  {
+    id: "IIIA",
+    domain: "intervention",
+    name: "Practice Concepts",
+    focus: "Helping relationships, strengths-based work, collaboration, problem solving, policy impacts, parenting, and formal documentation.",
+  },
+  {
+    id: "IIIB",
+    domain: "intervention",
+    name: "Intervention Methods and Techniques",
+    focus: "Trauma-informed care, communication, crisis intervention, evidence-based practice, coping skills, advocacy, case management, group, family, and addiction work.",
+  },
+  {
+    id: "IIIC",
+    domain: "intervention",
+    name: "Practice Evaluation and Research",
+    focus: "Progress evaluation, outcomes, program objectives, quality assurance, research design, data collection, reliability, and validity.",
+  },
+  {
+    id: "IIID",
+    domain: "intervention",
+    name: "Supervision and Administration",
+    focus: "Supervision, consultation, policy and procedure development, risk management, organizations, fiscal management, and resource allocation.",
+  },
+];
+
+export const curatedQuestions: QuestionInput[] = [
   {
     id: "eth-001",
     domain: "ethics",
@@ -2527,7 +2613,167 @@ export const curatedQuestions: Question[] = [
   },
 ];
 
-export const questions: Question[] = [...curatedQuestions, ...generatedQuestions];
+function includesAny(value: string, terms: string[]) {
+  return terms.some((term) => value.includes(term));
+}
+
+export function inferQuestionArea(question: QuestionInput): ExamAreaId {
+  if (question.area) return question.area;
+
+  const text = [
+    question.competency,
+    question.stem,
+    question.tags.join(" "),
+  ].join(" ").toLowerCase();
+
+  if (question.domain === "ethics") {
+    if (
+      includesAny(text, [
+        "anti-oppressive",
+        "anti-racist",
+        "access",
+        "bias",
+        "culture",
+        "cultural",
+        "discrimination",
+        "equity",
+        "identity",
+        "immigration",
+        "interpreter",
+        "language",
+        "marginalized",
+        "privilege",
+        "refugee",
+        "social justice",
+      ])
+    ) {
+      return "IC";
+    }
+
+    if (
+      includesAny(text, [
+        "billing",
+        "boundar",
+        "client rights",
+        "death and dying",
+        "documentation",
+        "duty to protect",
+        "electronic",
+        "impaired",
+        "mandatory",
+        "mandated",
+        "record",
+        "self-determination",
+        "service delivery",
+        "social media",
+        "supervision",
+        "technology",
+        "termination",
+      ])
+    ) {
+      return "IB";
+    }
+
+    return "IA";
+  }
+
+  if (question.domain === "assessment") {
+    if (
+      includesAny(text, [
+        "community resources",
+        "goal planning",
+        "level of care",
+        "medication",
+        "modality",
+        "resource",
+        "service plan",
+        "termination",
+        "treatment planning",
+        "triage",
+      ])
+    ) {
+      return "IIC";
+    }
+
+    if (
+      includesAny(text, [
+        "collateral",
+        "coping",
+        "diagnos",
+        "dsm",
+        "interview",
+        "mental status",
+        "motivation",
+        "objective",
+        "readiness",
+        "risk",
+        "sensitive",
+        "strengths",
+        "testing",
+      ])
+    ) {
+      return "IIB";
+    }
+
+    return "IIA";
+  }
+
+  if (
+    includesAny(text, [
+      "administration",
+      "employee",
+      "fiscal",
+      "leadership",
+      "organizational",
+      "policy and procedure",
+      "resource allocation",
+      "supervision",
+      "supervisory",
+    ])
+  ) {
+    return "IIID";
+  }
+
+  if (
+    includesAny(text, [
+      "evaluation",
+      "outcome",
+      "program",
+      "quality assurance",
+      "reliability",
+      "research",
+      "validity",
+    ])
+  ) {
+    return "IIIC";
+  }
+
+  if (
+    includesAny(text, [
+      "collaboration",
+      "formal document",
+      "helping relationship",
+      "interdisciplinary",
+      "parenting",
+      "policy",
+      "problem-solving process",
+      "strengths-based",
+    ])
+  ) {
+    return "IIIA";
+  }
+
+  return "IIIB";
+}
+
+function withExamArea(question: QuestionInput): Question {
+  return {
+    ...question,
+    area: inferQuestionArea(question),
+  };
+}
+
+export const questions: Question[] = [...curatedQuestions, ...generatedQuestions].map(withExamArea);
 
 export const flashcards: Flashcard[] = [
   {

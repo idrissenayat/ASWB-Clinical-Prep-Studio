@@ -1,4 +1,4 @@
-import type { Difficulty, DomainId, Question, SkillType } from "./exam";
+import type { Difficulty, DomainId, QuestionInput, SkillType } from "./exam";
 
 type QuestionDraft = {
   competency: string;
@@ -142,7 +142,7 @@ function shuffleOptions(options: string[], seed: string) {
   return keyed.sort((a, b) => a.key - b.key).map((item) => item.option);
 }
 
-function createQuestion(domain: DomainId, number: number, draft: QuestionDraft): Question {
+function createQuestion(domain: DomainId, number: number, draft: QuestionDraft): QuestionInput {
   const id = `gen-${domain}-${number.toString().padStart(4, "0")}`;
   const options = shuffleOptions([draft.correct, ...draft.distractors], id);
 
@@ -388,6 +388,50 @@ const ethicsTemplates: Template[] = [
         "Termination should be prepared, not sprung on the client.",
     };
   },
+  (index) => {
+    const context = pick(culturalContexts, index, 2);
+    const setting = pick(settings, index, 3);
+    return {
+      competency: "Diversity and social justice",
+      skill: "reasoning",
+      difficulty: "applied",
+      tags: ["social justice", "anti-oppressive practice", "bias", "culture"],
+      stem: `In a ${setting}, a client describes how ${context} is shaping access to care and trust in providers. What should guide the social worker's response?`,
+      correct:
+        "Explore the client's meaning, identify barriers and bias, and support access using culturally responsive and anti-oppressive practice",
+      distractors: [
+        "Redirect to symptoms only because social context is outside clinical practice",
+        "Assume the client is misinterpreting the situation until others confirm it",
+        "Use the same intervention plan regardless of identity or access concerns",
+      ],
+      rationale:
+        "Diversity and social justice questions require attention to meaning, access, power, bias, and culturally responsive service delivery.",
+      examLens:
+        "Identity and oppression are clinically relevant context, not distractions.",
+    };
+  },
+  (index) => {
+    const profile = pick(clientProfiles, index, 4);
+    const barrier = pick(["language access needs", "disability-related stigma", "immigration stress", "racial discrimination"], index, 5);
+    return {
+      competency: "Accessibility and client rights",
+      skill: "application",
+      difficulty: "foundation",
+      tags: ["accessibility", "language access", "equity", "client rights"],
+      stem: `${profile} says ${barrier} makes it difficult to participate fully in services. What should the social worker do NEXT?`,
+      correct:
+        "Collaborate with the client to remove access barriers and arrange appropriate supports or accommodations",
+      distractors: [
+        "Ask the client to adapt to the agency's usual process",
+        "Delay services until the client can participate without accommodation",
+        "Have a family member handle all communication for convenience",
+      ],
+      rationale:
+        "Ethical and equitable practice includes reasonable access supports that protect privacy, dignity, and meaningful participation.",
+      examLens:
+        "Access is part of ethical service, not an optional courtesy.",
+    };
+  },
 ];
 
 const assessmentTemplates: Template[] = [
@@ -620,9 +664,53 @@ const assessmentTemplates: Template[] = [
         "MSE findings inform assessment; they do not stand alone.",
     };
   },
+  (index) => {
+    const profile = pick(clientProfiles, index, 3);
+    const goal = pick(["reduce panic-related avoidance", "stabilize housing and treatment attendance", "increase safe coping after trauma reminders", "support recovery while reducing relapse risk"], index, 4);
+    return {
+      competency: "Treatment planning and resources",
+      skill: "reasoning",
+      difficulty: "applied",
+      tags: ["treatment planning", "resources", "service plan", "modality"],
+      stem: `${profile} wants to ${goal}, but has limited supports and practical barriers. What should the social worker include in the assessment plan?`,
+      correct:
+        "Identify client goals, strengths, barriers, resource needs, level of care, and culturally appropriate intervention options",
+      distractors: [
+        "Choose a treatment modality before assessing the client's context",
+        "Write goals based only on the agency's available groups",
+        "Focus on barriers only after the client misses several more appointments",
+      ],
+      rationale:
+        "Assessment practices connect assessed needs and strengths to service planning, resources, treatment modality selection, and level of care.",
+      examLens:
+        "A good plan grows from assessment data, not from provider convenience.",
+    };
+  },
 ];
 
 const interventionTemplates: Template[] = [
+  (index) => {
+    const profile = pick(clientProfiles, index, 2);
+    const concern = pick(concerns, index, 3);
+    return {
+      competency: "Helping relationship and practice concepts",
+      skill: "application",
+      difficulty: "foundation",
+      tags: ["helping relationship", "strengths-based", "problem-solving process"],
+      stem: `${profile} is hesitant to discuss ${concern} and says previous providers did not listen. What should the social worker do FIRST?`,
+      correct:
+        "Use empathy, acceptance, strengths-based engagement, and collaborative problem definition",
+      distractors: [
+        "Move directly to advice so the session feels productive",
+        "Challenge the client for not trusting services",
+        "Choose the intervention before understanding the client's goals",
+      ],
+      rationale:
+        "Practice concepts include building and maintaining the helping relationship, using strengths-based engagement, and collaborating in problem solving.",
+      examLens:
+        "When trust is fragile, build the relationship and define the problem together.",
+    };
+  },
   (index) => {
     const profile = pick(clientProfiles, index, 1);
     const crisis = pick(["a community shooting", "sudden eviction", "a panic episode", "a recent assault", "a disaster displacement"], index, 2);
@@ -798,6 +886,27 @@ const interventionTemplates: Template[] = [
     };
   },
   (index) => {
+    const outcome = pick(["dropout rates increased", "client goal completion improved", "referral follow-through decreased", "waitlist times changed"], index, 4);
+    return {
+      competency: "Practice evaluation and outcomes",
+      skill: "reasoning",
+      difficulty: "applied",
+      tags: ["evaluation", "outcomes", "program", "quality assurance"],
+      stem: `A clinic reviews service data and finds that ${outcome}. What should the social worker consider NEXT?`,
+      correct:
+        "Compare outcomes with program objectives, assess data quality, and identify practice or service changes to evaluate",
+      distractors: [
+        "Ignore the data because individual clinical judgment is enough",
+        "Assume the program is effective without reviewing outcomes",
+        "Change every service immediately before clarifying what the data mean",
+      ],
+      rationale:
+        "Practice evaluation uses outcomes, program objectives, data quality, and service impact to guide improvement.",
+      examLens:
+        "Evaluation questions ask what the evidence says and how practice should respond.",
+    };
+  },
+  (index) => {
     const approach = pick(["harm reduction", "assertiveness training", "self-monitoring", "role play", "stress management"], index, 3);
     return {
       competency: "Skills-based intervention",
@@ -839,6 +948,48 @@ const interventionTemplates: Template[] = [
         "Advocacy should increase client power, not replace it.",
     };
   },
+  (index) => {
+    const supervisionIssue = pick(["countertransference", "unclear learning goals", "a complex risk case", "a boundary concern"], index, 2);
+    return {
+      competency: "Supervision and consultation",
+      skill: "reasoning",
+      difficulty: "applied",
+      tags: ["supervision", "consultation", "client welfare"],
+      stem: `During supervision, a clinician identifies ${supervisionIssue} affecting service delivery. What should the social worker do?`,
+      correct:
+        "Use supervision or consultation to clarify risk, learning needs, ethical duties, and next practice steps",
+      distractors: [
+        "Avoid discussing the concern because supervision is only administrative",
+        "Continue the same approach without reflection",
+        "Shift responsibility to the client for the worker's uncertainty",
+      ],
+      rationale:
+        "Supervision and consultation support ethical practice, client welfare, self-assessment, and appropriate decision-making.",
+      examLens:
+        "Supervision questions reward reflection, consultation, and protection of client welfare.",
+    };
+  },
+  (index) => {
+    const agencyIssue = pick(["a privacy breach pattern", "inconsistent crisis procedures", "unsafe record access", "unclear referral workflows"], index, 3);
+    return {
+      competency: "Policy and administration",
+      skill: "application",
+      difficulty: "exam-ready",
+      tags: ["administration", "policy and procedure", "risk management", "organizations"],
+      stem: `An agency identifies ${agencyIssue} that could affect multiple clients. What administrative response is MOST appropriate?`,
+      correct:
+        "Review policy, clarify procedures, train staff, monitor implementation, and evaluate whether risk decreases",
+      distractors: [
+        "Handle each incident informally without changing agency practice",
+        "Ask clients to manage the system problem themselves",
+        "Wait for a complaint before addressing the pattern",
+      ],
+      rationale:
+        "Administrative practice includes policy development, risk reduction, staff training, implementation, and evaluation.",
+      examLens:
+        "System-level risk needs a system-level response.",
+    };
+  },
 ];
 
 function buildDomainQuestions(domain: DomainId, templates: Template[]) {
@@ -848,7 +999,7 @@ function buildDomainQuestions(domain: DomainId, templates: Template[]) {
   });
 }
 
-export const generatedQuestions: Question[] = [
+export const generatedQuestions: QuestionInput[] = [
   ...buildDomainQuestions("ethics", ethicsTemplates),
   ...buildDomainQuestions("assessment", assessmentTemplates),
   ...buildDomainQuestions("intervention", interventionTemplates),

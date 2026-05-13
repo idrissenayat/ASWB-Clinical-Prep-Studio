@@ -152,6 +152,7 @@ a {
 .icon-action,
 .mini-reset,
 .area-select select,
+.model-toggle button,
 .segmented-control button,
 .sim-options button,
 .option-button,
@@ -190,6 +191,7 @@ a {
 .text-action:hover,
 .icon-action:hover,
 .mini-reset:hover,
+.model-toggle button:hover,
 .segmented-control button:hover,
 .sim-options button:hover,
 .option-button:hover,
@@ -485,6 +487,43 @@ input:disabled {
   text-transform: uppercase;
 }
 
+.model-group {
+  min-width: min(360px, 100%);
+}
+
+.model-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.model-toggle button {
+  display: grid;
+  min-height: 58px;
+  gap: 3px;
+  padding: 9px 11px;
+  color: #46524a;
+  text-align: left;
+  background: #fffaf1;
+  border-color: #d9d0c2;
+}
+
+.model-toggle strong {
+  font-size: 0.9rem;
+  line-height: 1.12;
+}
+
+.model-toggle span,
+.model-toggle small {
+  color: inherit;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.model-toggle small {
+  color: #6a736d;
+}
+
 .area-select {
   min-width: min(360px, 100%);
 }
@@ -659,6 +698,7 @@ input:disabled {
 }
 
 .segmented-control button.is-selected,
+.model-toggle button.is-selected,
 .sim-options button.is-selected {
   color: #fffdf8;
   background: #18221f;
@@ -1213,6 +1253,7 @@ input:disabled {
   }
 
   .practice-filter-panel,
+  .model-group,
   .filter-group,
   .area-select,
   .sim-area-row {

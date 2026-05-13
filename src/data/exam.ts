@@ -11,7 +11,11 @@ export type ExamAreaId =
   | "IIIA"
   | "IIIB"
   | "IIIC"
-  | "IIID";
+  | "IIID"
+  | "IVA"
+  | "IVB"
+  | "IVC";
+export type ExamModelId = "2026" | "pre2026";
 export type SkillType = "recall" | "application" | "reasoning";
 export type Difficulty = "foundation" | "applied" | "exam-ready";
 
@@ -29,6 +33,7 @@ export interface Question {
   id: string;
   domain: DomainId;
   area: ExamAreaId;
+  area2026: ExamAreaId;
   competency: string;
   skill: SkillType;
   difficulty: Difficulty;
@@ -40,14 +45,27 @@ export interface Question {
   examLens: string;
 }
 
-export type QuestionInput = Omit<Question, "area"> & {
+export type QuestionInput = Omit<Question, "area" | "area2026"> & {
   area?: ExamAreaId;
+  area2026?: ExamAreaId;
 };
 
 export interface ExamArea {
   id: ExamAreaId;
   domain: DomainId;
   name: string;
+  focus: string;
+}
+
+export interface ExamModel {
+  id: ExamModelId;
+  label: string;
+  shortLabel: string;
+  questionCount: number;
+  scoredQuestions: number;
+  unscoredQuestions: number;
+  timeLimitMinutes: number;
+  blueprint: string;
   focus: string;
 }
 
@@ -65,6 +83,7 @@ export const examFacts = {
   unscoredQuestions: 12,
   timeLimitMinutes: 240,
   currentBeforeTransitionQuestions: 170,
+  currentBeforeTransitionScoredQuestions: 150,
   currentBeforeTransitionUnscored: 20,
 };
 
@@ -116,7 +135,34 @@ export const domains: Domain[] = [
   },
 ];
 
-export const examAreas: ExamArea[] = [
+export const examModels: ExamModel[] = [
+  {
+    id: "2026",
+    label: "On/after Aug. 3, 2026",
+    shortLabel: "2026 blueprint",
+    questionCount: examFacts.totalQuestions,
+    scoredQuestions: examFacts.scoredQuestions,
+    unscoredQuestions: examFacts.unscoredQuestions,
+    timeLimitMinutes: examFacts.timeLimitMinutes,
+    blueprint: "2026 Clinical examination content outline",
+    focus:
+      "ASWB 2026 blueprint: three content areas, 122 total questions, 12 unscored, four-hour pacing, and a higher proportion of applied-knowledge questions.",
+  },
+  {
+    id: "pre2026",
+    label: "Before Aug. 3, 2026",
+    shortLabel: "2018 blueprint",
+    questionCount: examFacts.currentBeforeTransitionQuestions,
+    scoredQuestions: examFacts.currentBeforeTransitionScoredQuestions,
+    unscoredQuestions: examFacts.currentBeforeTransitionUnscored,
+    timeLimitMinutes: examFacts.timeLimitMinutes,
+    blueprint: "2018 Clinical Social Work Licensing Examination content outline",
+    focus:
+      "ASWB 2018 blueprint: four content areas, 170 total questions, 20 unscored, four-hour pacing, and three- and four-option questions with more four-option items.",
+  },
+];
+
+export const examAreas2026: ExamArea[] = [
   {
     id: "IA",
     domain: "ethics",
@@ -178,6 +224,94 @@ export const examAreas: ExamArea[] = [
     focus: "Supervision, consultation, policy and procedure development, risk management, organizations, fiscal management, and resource allocation.",
   },
 ];
+
+export const examAreasPre2026: ExamArea[] = [
+  {
+    id: "IA",
+    domain: "assessment",
+    name: "Human Growth and Development",
+    focus: "Lifespan development, attachment, aging, personality theories, family life cycle, grief, genetics, and biopsychosocial functioning.",
+  },
+  {
+    id: "IB",
+    domain: "assessment",
+    name: "Human Behavior in the Social Environment",
+    focus: "Person-in-environment, family and group dynamics, systems perspectives, addiction, trauma effects, crisis, and social institutions.",
+  },
+  {
+    id: "IC",
+    domain: "assessment",
+    name: "Diversity and Discrimination",
+    focus: "Culture, race, ethnicity, immigration, sexual orientation, gender identity, disability, discrimination, oppression, and social justice.",
+  },
+  {
+    id: "IIA",
+    domain: "assessment",
+    name: "Biopsychosocial History and Collateral Data",
+    focus: "Biopsychosocial assessment, collateral records, sensitive information, active listening, observation, and neurologic or organic symptoms.",
+  },
+  {
+    id: "IIB",
+    domain: "assessment",
+    name: "Assessment and Diagnosis",
+    focus: "Problem formulation, mental status exams, testing, psychosocial stress, exploitation, trauma, risk, strengths, motivation, and diagnosis.",
+  },
+  {
+    id: "IIC",
+    domain: "assessment",
+    name: "Treatment Planning",
+    focus: "Treatment goals, intervention planning, level of care, service planning, client readiness, resources, referrals, and termination planning.",
+  },
+  {
+    id: "IIIA",
+    domain: "intervention",
+    name: "Therapeutic Relationship",
+    focus: "Helping relationship, acceptance, empathy, transparency, power, communication, role clarity, feedback, and violence impacts on engagement.",
+  },
+  {
+    id: "IIIB",
+    domain: "intervention",
+    name: "The Intervention Process",
+    focus: "Interviewing, engagement, treatment phases, problem solving, crisis intervention, psychotherapies, coping skills, group work, and family work.",
+  },
+  {
+    id: "IIIC",
+    domain: "intervention",
+    name: "Service Delivery and Management of Cases",
+    focus: "Case management, advocacy, policies, service delivery, community resources, case recording, program evaluation, and quality assurance.",
+  },
+  {
+    id: "IIID",
+    domain: "intervention",
+    name: "Consultation and Interdisciplinary Collaboration",
+    focus: "Leadership, supervision, consultation, case presentations, formal documents, networking, teams, community participation, and governance.",
+  },
+  {
+    id: "IVA",
+    domain: "ethics",
+    name: "Professional Values and Ethical Issues",
+    focus: "Ethical dilemmas, client rights, refusal of services, boundaries, dual relationships, informed consent, documentation, termination, research ethics, and worker safety.",
+  },
+  {
+    id: "IVB",
+    domain: "ethics",
+    name: "Confidentiality",
+    focus: "Client records, confidentiality, electronic information security, mandatory reporting, abuse, threats of harm, and impaired professionals.",
+  },
+  {
+    id: "IVC",
+    domain: "ethics",
+    name: "Professional Development and Use of Self",
+    focus: "Professional values, objectivity, self-determination, use of self, transference, countertransference, self-care, burnout, secondary trauma, and professional development.",
+  },
+];
+
+export const examAreasByModel: Record<ExamModelId, ExamArea[]> = {
+  "2026": examAreas2026,
+  pre2026: examAreasPre2026,
+};
+
+export const examAreas = examAreasPre2026;
 
 export const curatedQuestions: QuestionInput[] = [
   {
@@ -2617,8 +2751,8 @@ function includesAny(value: string, terms: string[]) {
   return terms.some((term) => value.includes(term));
 }
 
-export function inferQuestionArea(question: QuestionInput): ExamAreaId {
-  if (question.area) return question.area;
+export function inferQuestionArea2026(question: QuestionInput): ExamAreaId {
+  if (question.area2026) return question.area2026;
 
   const text = [
     question.competency,
@@ -2766,10 +2900,236 @@ export function inferQuestionArea(question: QuestionInput): ExamAreaId {
   return "IIIB";
 }
 
+export function inferQuestionArea(question: QuestionInput): ExamAreaId {
+  if (question.area) return question.area;
+
+  const text = [
+    question.competency,
+    question.stem,
+    question.tags.join(" "),
+  ].join(" ").toLowerCase();
+
+  if (question.domain === "ethics") {
+    if (
+      includesAny(text, [
+        "abuse",
+        "confidential",
+        "duty to protect",
+        "electronic",
+        "impaired",
+        "mandatory",
+        "mandated",
+        "record",
+        "release of information",
+        "threat",
+      ])
+    ) {
+      return "IVB";
+    }
+
+    if (
+      includesAny(text, [
+        "burnout",
+        "client competence",
+        "competence",
+        "countertransference",
+        "evidence-based",
+        "objectivity",
+        "own values",
+        "professional development",
+        "professional impairment",
+        "professional values",
+        "secondary trauma",
+        "self-care",
+        "self-determination",
+        "transference",
+        "use of self",
+        "values and beliefs",
+      ])
+    ) {
+      return "IVC";
+    }
+
+    return "IVA";
+  }
+
+  if (question.domain === "assessment") {
+    if (
+      includesAny(text, [
+        "anti-oppressive",
+        "anti-racist",
+        "bias",
+        "culture",
+        "cultural",
+        "discrimination",
+        "diversity",
+        "equity",
+        "identity",
+        "immigration",
+        "interpreter",
+        "language",
+        "marginalized",
+        "oppression",
+        "privilege",
+        "refugee",
+        "social justice",
+      ])
+    ) {
+      return "IC";
+    }
+
+    if (
+      includesAny(text, [
+        "aging",
+        "attachment",
+        "body image",
+        "development",
+        "family life",
+        "genetic",
+        "gerontology",
+        "grief",
+        "human growth",
+        "lifespan",
+        "loss",
+        "parenting",
+        "personality",
+      ])
+    ) {
+      return "IA";
+    }
+
+    if (
+      includesAny(text, [
+        "addiction",
+        "community",
+        "crisis",
+        "ecological",
+        "family dynamics",
+        "group dynamics",
+        "interpersonal",
+        "organization",
+        "person-in-environment",
+        "social environment",
+        "social institution",
+        "systems",
+      ])
+    ) {
+      return "IB";
+    }
+
+    if (
+      includesAny(text, [
+        "community resources",
+        "goal planning",
+        "level of care",
+        "medication",
+        "modality",
+        "resource",
+        "service plan",
+        "termination",
+        "treatment planning",
+        "triage",
+      ])
+    ) {
+      return "IIC";
+    }
+
+    if (
+      includesAny(text, [
+        "collateral",
+        "differential",
+        "diagnos",
+        "dsm",
+        "exploitation",
+        "interview",
+        "mental status",
+        "motivation",
+        "objective",
+        "readiness",
+        "risk",
+        "sensitive",
+        "strengths",
+        "testing",
+        "trauma",
+        "violence",
+      ])
+    ) {
+      return "IIB";
+    }
+
+    return "IIA";
+  }
+
+  if (
+    includesAny(text, [
+      "case presentation",
+      "consultation",
+      "formal document",
+      "governance",
+      "leadership",
+      "networking",
+      "supervisee",
+      "supervision",
+      "supervisory",
+      "team collaboration",
+    ])
+  ) {
+    return "IIID";
+  }
+
+  if (
+    includesAny(text, [
+      "evaluation",
+      "outcome",
+      "program",
+      "quality assurance",
+    ])
+  ) {
+    return "IIIC";
+  }
+
+  if (
+    includesAny(text, [
+      "advocacy",
+      "case management",
+      "case recording",
+      "community resources",
+      "collaboration",
+      "management of cases",
+      "policy",
+      "practice records",
+      "referral",
+      "resource",
+      "service delivery",
+      "service network",
+    ])
+  ) {
+    return "IIIC";
+  }
+
+  if (
+    includesAny(text, [
+      "acceptance",
+      "communication",
+      "empathy",
+      "feedback",
+      "helping relationship",
+      "role clarity",
+      "therapeutic relationship",
+      "transparency",
+    ])
+  ) {
+    return "IIIA";
+  }
+
+  return "IIIB";
+}
+
 function withExamArea(question: QuestionInput): Question {
   return {
     ...question,
     area: inferQuestionArea(question),
+    area2026: inferQuestionArea2026(question),
   };
 }
 

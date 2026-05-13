@@ -24,10 +24,12 @@ import {
 import {
   DomainId,
   ExamAreaId,
+  ExamModelId,
   Question,
   domains,
-  examAreas,
+  examAreasByModel,
   examFacts,
+  examModels,
   flashcards,
   planTasks,
   questions,
@@ -35,10 +37,12 @@ import {
 
 type View = "dashboard" | "practice" | "simulation" | "flashcards" | "planner";
 type AreaFilter = ExamAreaId | "all";
+const defaultExamModel: ExamModelId = "2026";
 
 interface Attempt {
   questionId: string;
   domain: DomainId;
+  examModel?: ExamModelId;
   area?: ExamAreaId;
   selectedIndex: number;
   correct: boolean;
@@ -69,12 +73,21 @@ const navItems: Array<{ id: View; label: string; icon: typeof BarChart3 }> = [
 ];
 
 const domainMap = new Map(domains.map((domain) => [domain.id, domain]));
-const examAreaMap = new Map(examAreas.map((area) => [area.id, area]));
+const areaKey = (examModel: ExamModelId, areaId: ExamAreaId) => `${examModel}:${areaId}`;
+const getQuestionArea = (question: Question, examModel: ExamModelId) =>
+  examModel === "2026" ? question.area2026 : question.area;
+const examAreaMap = new Map(
+  examModels.flatMap((model) =>
+    examAreasByModel[model.id].map((area) => [areaKey(model.id, area.id), area] as const),
+  ),
+);
 const examAreaCounts = new Map(
-  examAreas.map((area) => [
-    area.id,
-    questions.filter((question) => question.area === area.id).length,
-  ]),
+  examModels.flatMap((model) =>
+    examAreasByModel[model.id].map((area) => [
+      areaKey(model.id, area.id),
+      questions.filter((question) => getQuestionArea(question, model.id) === area.id).length,
+    ] as const),
+  ),
 );
 
 function useLocalStorage<T>(key: string, initialValue: T) {
@@ -172,16 +185,7 @@ function buildStats(progress: ProgressState) {
   };
 }
 
-function makeSimulation(size: number, areaFilter: AreaFilter = "all") {
-  if (areaFilter !== "all") {
-    return shuffle(questions.filter((question) => question.area === areaFilter)).slice(0, size);
-  }
-
-  const quotas = domains.map((domain) => ({
-    domain,
-    count: Math.max(1, Math.round(size * (domain.percent / 100))),
-  }));
-
+function balanceQuotas<T extends { count: number }>(quotas: T[], size: number) {
   while (quotas.reduce((sum, item) => sum + item.count, 0) > size) {
     const largest = quotas.reduce((best, item) => (item.count > best.count ? item : best), quotas[0]);
     largest.count -= 1;
@@ -191,6 +195,46 @@ function makeSimulation(size: number, areaFilter: AreaFilter = "all") {
     const smallest = quotas.reduce((best, item) => (item.count < best.count ? item : best), quotas[0]);
     smallest.count += 1;
   }
+
+  return quotas;
+}
+
+function makeSimulation(
+  size: number,
+  areaFilter: AreaFilter = "all",
+  examModel: ExamModelId = defaultExamModel,
+) {
+  if (areaFilter !== "all") {
+    return shuffle(
+      questions.filter((question) => getQuestionArea(question, examModel) === areaFilter),
+    ).slice(0, size);
+  }
+
+  if (examModel === "pre2026") {
+    const legacyQuotas = balanceQuotas(
+      [
+        { areaIds: ["IA", "IB", "IC"] as ExamAreaId[], percent: 24, count: Math.max(1, Math.round(size * 0.24)) },
+        { areaIds: ["IIA", "IIB", "IIC"] as ExamAreaId[], percent: 30, count: Math.max(1, Math.round(size * 0.3)) },
+        { areaIds: ["IIIA", "IIIB", "IIIC", "IIID"] as ExamAreaId[], percent: 27, count: Math.max(1, Math.round(size * 0.27)) },
+        { areaIds: ["IVA", "IVB", "IVC"] as ExamAreaId[], percent: 19, count: Math.max(1, Math.round(size * 0.19)) },
+      ],
+      size,
+    );
+
+    return shuffle(
+      legacyQuotas.flatMap(({ areaIds, count }) =>
+        shuffle(questions.filter((question) => areaIds.includes(question.area))).slice(0, count),
+      ),
+    );
+  }
+
+  const quotas = balanceQuotas(
+    domains.map((domain) => ({
+      domain,
+      count: Math.max(1, Math.round(size * (domain.percent / 100))),
+    })),
+    size,
+  );
 
   return shuffle(
     quotas.flatMap(({ domain, count }) =>
@@ -208,7 +252,12 @@ function App() {
 
   const stats = useMemo(() => buildStats(progress), [progress]);
 
-  const recordAttempt = (question: Question, selectedIndex: number, confidence: number) => {
+  const recordAttempt = (
+    question: Question,
+    selectedIndex: number,
+    confidence: number,
+    examModel: ExamModelId = defaultExamModel,
+  ) => {
     setProgress((current) => ({
       ...current,
       attempts: [
@@ -216,7 +265,8 @@ function App() {
         {
           questionId: question.id,
           domain: question.domain,
-          area: question.area,
+          examModel,
+          area: getQuestionArea(question, examModel),
           selectedIndex,
           correct: selectedIndex === question.answerIndex,
           confidence,
@@ -341,7 +391,7 @@ function Dashboard({
           <h2>Practice the judgment the 2026 exam is built to measure.</h2>
           <p className="hero-text">
             Blueprint-weighted review, a 2,500-question original practice pool, rationales,
-            flashcards, and timed sprints tuned to the 122-question, four-hour format.
+            flashcards, and timed sprints for the ASWB 2026 blueprint or the 2018 pre-transition outline.
           </p>
           <div className="hero-actions">
             <button className="primary-action" type="button" onClick={() => setView("practice")}>
@@ -433,16 +483,29 @@ function Dashboard({
             <div>
               <dt>Question count</dt>
               <dd>
-                {examFacts.totalQuestions} total, {examFacts.unscoredQuestions} unscored
+                On/after Aug. 3, 2026: {examFacts.totalQuestions} total,{" "}
+                {examFacts.scoredQuestions} scored, {examFacts.unscoredQuestions} unscored
+              </dd>
+            </div>
+            <div>
+              <dt>Pre-transition format</dt>
+              <dd>
+                Before Aug. 3, 2026: {examFacts.currentBeforeTransitionQuestions} total,{" "}
+                {examFacts.currentBeforeTransitionScoredQuestions} scored,{" "}
+                {examFacts.currentBeforeTransitionUnscored} unscored
               </dd>
             </div>
             <div>
               <dt>Time limit</dt>
-              <dd>{formatTime(examFacts.timeLimitMinutes)}</dd>
+              <dd>{formatTime(examFacts.timeLimitMinutes)} in both formats</dd>
+            </div>
+            <div>
+              <dt>Practice bank</dt>
+              <dd>{questions.length} original questions mapped to both blueprints</dd>
             </div>
             <div>
               <dt>Question style</dt>
-              <dd>More applied knowledge and three-option items</dd>
+              <dd>Before 2026 has more four-option items; 2026 continues toward more three-option items</dd>
             </div>
           </dl>
           <div className="source-links">
@@ -533,36 +596,68 @@ function MetricCard({
   );
 }
 
+function ExamModelSelector({
+  value,
+  onChange,
+}: {
+  value: ExamModelId;
+  onChange: (value: ExamModelId) => void;
+}) {
+  return (
+    <div className="filter-group model-group">
+      <span className="filter-label">Exam model</span>
+      <div className="model-toggle" aria-label="Exam model">
+        {examModels.map((model) => (
+          <button
+            key={model.id}
+            type="button"
+            className={value === model.id ? "is-selected" : ""}
+            onClick={() => onChange(model.id)}
+          >
+            <strong>{model.label}</strong>
+            <span>{model.questionCount}-question exam format</span>
+            <small>{questions.length}-question practice bank</small>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function AreaSelect({
+  examModel,
   domainFilter,
   value,
   onChange,
 }: {
+  examModel: ExamModelId;
   domainFilter: DomainId | "all";
   value: AreaFilter;
   onChange: (value: AreaFilter) => void;
 }) {
+  const modelAreas = examAreasByModel[examModel];
   const availableAreas =
     domainFilter === "all"
-      ? examAreas
-      : examAreas.filter((area) => area.domain === domainFilter);
+      ? modelAreas
+      : modelAreas.filter((area) => area.domain === domainFilter);
+  const selectedModel = examModels.find((model) => model.id === examModel)!;
   const allLabel =
     domainFilter === "all"
-      ? "All exam areas"
+      ? `All ${selectedModel.shortLabel} areas`
       : `All ${domainMap.get(domainFilter)!.shortName} areas`;
 
   return (
     <label className="area-select">
-      <span>Exam area</span>
+      <span>Study area</span>
       <select
-        aria-label="Exam area"
+        aria-label="Study area"
         value={value}
         onChange={(event) => onChange(event.target.value as AreaFilter)}
       >
         <option value="all">{allLabel}</option>
         {availableAreas.map((area) => (
           <option key={area.id} value={area.id}>
-            {area.id} - {area.name} ({examAreaCounts.get(area.id)})
+            {area.id} - {area.name} ({examAreaCounts.get(areaKey(examModel, area.id))})
           </option>
         ))}
       </select>
@@ -576,9 +671,15 @@ function PracticeView({
   toggleBookmark,
 }: {
   progress: ProgressState;
-  recordAttempt: (question: Question, selectedIndex: number, confidence: number) => void;
+  recordAttempt: (
+    question: Question,
+    selectedIndex: number,
+    confidence: number,
+    examModel?: ExamModelId,
+  ) => void;
   toggleBookmark: (questionId: string) => void;
 }) {
+  const [examModel, setExamModel] = useState<ExamModelId>(defaultExamModel);
   const [domainFilter, setDomainFilter] = useState<DomainId | "all">("all");
   const [areaFilter, setAreaFilter] = useState<AreaFilter>("all");
   const [index, setIndex] = useState(0);
@@ -595,15 +696,17 @@ function PracticeView({
   const filteredQuestions = useMemo(() => {
     return questions.filter((question) => {
       const matchesDomain = domainFilter === "all" || question.domain === domainFilter;
-      const matchesArea = areaFilter === "all" || question.area === areaFilter;
+      const matchesArea =
+        areaFilter === "all" || getQuestionArea(question, examModel) === areaFilter;
       return matchesDomain && matchesArea;
     });
-  }, [areaFilter, domainFilter]);
+  }, [areaFilter, domainFilter, examModel]);
 
   const activeQuestions = practiceQueue.length ? practiceQueue : filteredQuestions;
   const question = activeQuestions[index % activeQuestions.length];
   const domain = domainMap.get(question.domain)!;
-  const area = examAreaMap.get(question.area)!;
+  const areaId = getQuestionArea(question, examModel);
+  const area = examAreaMap.get(areaKey(examModel, areaId))!;
   const isBookmarked = progress.bookmarks.includes(question.id);
   const currentQuestionNumber = (index % activeQuestions.length) + 1;
   const positionPercent = Math.round((currentQuestionNumber / activeQuestions.length) * 100);
@@ -628,10 +731,16 @@ function PracticeView({
     setAreaFilter("all");
   };
 
+  const changeExamModel = (nextModel: ExamModelId) => {
+    setExamModel(nextModel);
+    setDomainFilter("all");
+    setAreaFilter("all");
+  };
+
   const changeAreaFilter = (nextArea: AreaFilter) => {
     setAreaFilter(nextArea);
     if (nextArea !== "all") {
-      setDomainFilter(examAreaMap.get(nextArea)!.domain);
+      setDomainFilter(examAreaMap.get(areaKey(examModel, nextArea))!.domain);
     }
   };
 
@@ -645,7 +754,7 @@ function PracticeView({
   const submitAnswer = () => {
     if (selectedIndex === null || revealed) return;
     const correct = selectedIndex === question.answerIndex;
-    recordAttempt(question, selectedIndex, confidence);
+    recordAttempt(question, selectedIndex, confidence, examModel);
     setSessionStats((current) => ({
       answered: current.answered + 1,
       correct: current.correct + (correct ? 1 : 0),
@@ -672,6 +781,7 @@ function PracticeView({
           <h2>Practice with rationales</h2>
         </div>
         <div className="practice-filter-panel">
+          <ExamModelSelector value={examModel} onChange={changeExamModel} />
           <div className="filter-group">
             <span className="filter-label">Domain</span>
             <div className="segmented-control" aria-label="Domain filter">
@@ -695,6 +805,7 @@ function PracticeView({
             </div>
           </div>
           <AreaSelect
+            examModel={examModel}
             domainFilter={domainFilter}
             value={areaFilter}
             onChange={changeAreaFilter}
@@ -744,7 +855,7 @@ function PracticeView({
               {domain.name}
             </span>
             <span className="area-chip" title={area.name}>
-              {question.area} · {area.name}
+              {areaId} · {area.name}
             </span>
             <span>{question.skill}</span>
             <span>{question.difficulty}</span>
@@ -849,8 +960,14 @@ function PracticeView({
 function SimulationView({
   recordAttempt,
 }: {
-  recordAttempt: (question: Question, selectedIndex: number, confidence: number) => void;
+  recordAttempt: (
+    question: Question,
+    selectedIndex: number,
+    confidence: number,
+    examModel?: ExamModelId,
+  ) => void;
 }) {
+  const [examModel, setExamModel] = useState<ExamModelId>(defaultExamModel);
   const [size, setSize] = useState(24);
   const [areaFilter, setAreaFilter] = useState<AreaFilter>("all");
   const [simulationQuestions, setSimulationQuestions] = useState<Question[]>([]);
@@ -862,9 +979,20 @@ function SimulationView({
 
   const activeQuestion = simulationQuestions[index];
   const selectedIndex = activeQuestion ? answers[activeQuestion.id] : undefined;
-  const timerMinutes = Math.max(5, Math.round((size / examFacts.totalQuestions) * examFacts.timeLimitMinutes));
+  const selectedModel = examModels.find((model) => model.id === examModel)!;
+  const simulationSizes = examModel === "2026" ? [12, 24, 60, 122] : [20, 50, 85, 170];
+  const timerMinutes = Math.max(
+    5,
+    Math.round((size / selectedModel.questionCount) * selectedModel.timeLimitMinutes),
+  );
   const simulationFocus =
-    areaFilter === "all" ? null : examAreaMap.get(areaFilter)!;
+    areaFilter === "all" ? null : examAreaMap.get(areaKey(examModel, areaFilter))!;
+
+  const changeExamModel = (nextModel: ExamModelId) => {
+    setExamModel(nextModel);
+    setAreaFilter("all");
+    setSize(nextModel === "2026" ? 24 : 50);
+  };
 
   useEffect(() => {
     if (!simulationQuestions.length || finished) return undefined;
@@ -883,7 +1011,7 @@ function SimulationView({
   }, [simulationQuestions.length, finished]);
 
   const startSimulation = () => {
-    const nextQuestions = makeSimulation(size, areaFilter);
+    const nextQuestions = makeSimulation(size, areaFilter, examModel);
     setSimulationQuestions(nextQuestions);
     setAnswers({});
     setFlagged([]);
@@ -895,7 +1023,7 @@ function SimulationView({
   const finishSimulation = () => {
     simulationQuestions.forEach((question) => {
       const answer = answers[question.id];
-      if (answer !== undefined) recordAttempt(question, answer, 3);
+      if (answer !== undefined) recordAttempt(question, answer, 3, examModel);
     });
     setFinished(true);
   };
@@ -921,8 +1049,9 @@ function SimulationView({
         <div className="sim-start">
           <section className="panel">
             <h3>Simulation length</h3>
+            <ExamModelSelector value={examModel} onChange={changeExamModel} />
             <div className="sim-options" aria-label="Simulation length">
-              {[12, 24, 60, 122].map((option) => (
+              {simulationSizes.map((option) => (
                 <button
                   key={option}
                   type="button"
@@ -930,12 +1059,13 @@ function SimulationView({
                   onClick={() => setSize(option)}
                 >
                   <strong>{option}</strong>
-                  <span>{formatTime(Math.round((option / examFacts.totalQuestions) * examFacts.timeLimitMinutes))}</span>
+                  <span>{formatTime(Math.round((option / selectedModel.questionCount) * selectedModel.timeLimitMinutes))}</span>
                 </button>
               ))}
             </div>
             <div className="sim-area-row">
               <AreaSelect
+                examModel={examModel}
                 domainFilter="all"
                 value={areaFilter}
                 onChange={setAreaFilter}
@@ -949,11 +1079,19 @@ function SimulationView({
 
           <aside className="panel">
             <p className="eyebrow">Real exam structure</p>
-            <h3>{examFacts.totalQuestions} questions in {formatTime(examFacts.timeLimitMinutes)}</h3>
+            <h3>
+              {selectedModel.questionCount} questions in {formatTime(selectedModel.timeLimitMinutes)}
+            </h3>
+            <p className="muted">
+              {selectedModel.scoredQuestions} scored and {selectedModel.unscoredQuestions} unscored.
+            </p>
             <p className="muted">
               {simulationFocus
                 ? `This focused sprint pulls from ${simulationFocus.id}: ${simulationFocus.name}.`
-                : "This local sprint preserves the 2026 blueprint weighting and pacing ratio while using the original question bank included in this app."}
+                : selectedModel.focus}
+            </p>
+            <p className="muted">
+              Practice questions available in this model: {questions.length}.
             </p>
           </aside>
         </div>
@@ -1017,7 +1155,8 @@ function SimulationView({
   }
 
   const domain = domainMap.get(activeQuestion.domain)!;
-  const area = examAreaMap.get(activeQuestion.area)!;
+  const activeAreaId = getQuestionArea(activeQuestion, examModel);
+  const area = examAreaMap.get(areaKey(examModel, activeAreaId))!;
 
   return (
     <section className="view-stack">
@@ -1041,7 +1180,7 @@ function SimulationView({
             {domain.name}
           </span>
           <span className="area-chip" title={area.name}>
-            {activeQuestion.area} · {area.name}
+            {activeAreaId} · {area.name}
           </span>
           <span>{activeQuestion.skill}</span>
           <button

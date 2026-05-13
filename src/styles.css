@@ -81,15 +81,33 @@ a {
 }
 
 .brand-mark {
+  position: relative;
   display: grid;
   width: 48px;
   height: 48px;
   color: #fff;
   place-items: center;
-  background: #1f625f;
+  background:
+    radial-gradient(circle at 72% 26%, rgba(255, 253, 248, 0.24), transparent 28%),
+    linear-gradient(135deg, #1f625f 0%, #257c7a 58%, #cf5a3d 100%);
   border: 1px solid rgba(24, 34, 31, 0.18);
   border-radius: 8px;
   box-shadow: 0 10px 24px rgba(37, 124, 122, 0.2);
+}
+
+.brand-care {
+  position: relative;
+  z-index: 1;
+  transform: translate(-2px, -1px);
+}
+
+.brand-book {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  z-index: 2;
+  color: #fff7eb;
+  filter: drop-shadow(0 2px 3px rgba(24, 34, 31, 0.24));
 }
 
 .brand-lockup h1,

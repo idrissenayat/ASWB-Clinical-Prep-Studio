@@ -11,10 +11,11 @@ import {
   ClipboardCheck,
   ExternalLink,
   Flag,
+  BookHeart,
+  HeartHandshake,
   Layers3,
   Play,
   RotateCcw,
-  ShieldCheck,
   Target,
   Timer,
   Trophy,
@@ -246,8 +247,9 @@ function App() {
     <main className="app-shell">
       <header className="app-header">
         <div className="brand-lockup">
-          <div className="brand-mark">
-            <ShieldCheck aria-hidden="true" size={24} />
+          <div className="brand-mark" aria-hidden="true">
+            <HeartHandshake className="brand-care" size={27} />
+            <BookHeart className="brand-book" size={16} />
           </div>
           <div>
             <p className="eyebrow">Independent 2026 Clinical prep</p>

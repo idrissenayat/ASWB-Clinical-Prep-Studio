@@ -508,11 +508,29 @@ input:disabled {
 }
 
 .practice-filter-panel {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: flex-end;
-  gap: 10px 12px;
+  display: grid;
+  width: min(100%, 760px);
+  gap: 10px;
+  padding: 12px;
+  background: rgba(255, 253, 248, 0.72);
+  border: 1px solid rgba(24, 34, 31, 0.1);
+  border-radius: 8px;
+}
+
+.filter-row {
+  display: grid;
+  gap: 10px;
+}
+
+.filter-row.is-model {
+  grid-template-columns: 1fr;
+}
+
+.filter-row.is-dependent {
+  grid-template-columns: minmax(220px, 0.65fr) minmax(300px, 1fr);
+  align-items: end;
+  padding-top: 10px;
+  border-top: 1px solid #eadfce;
 }
 
 .filter-group,
@@ -531,7 +549,7 @@ input:disabled {
 }
 
 .model-group {
-  min-width: min(360px, 100%);
+  min-width: 0;
 }
 
 .model-toggle {
@@ -572,7 +590,7 @@ input:disabled {
 }
 
 .area-select {
-  min-width: min(360px, 100%);
+  min-width: 0;
 }
 
 .area-select select {
@@ -1267,6 +1285,11 @@ input:disabled {
 
   .practice-filter-panel {
     justify-content: flex-start;
+    width: 100%;
+  }
+
+  .filter-row.is-dependent {
+    grid-template-columns: 1fr;
   }
 
   .hero-panel,
@@ -1417,6 +1440,7 @@ input:disabled {
   }
 
   .practice-filter-panel,
+  .filter-row,
   .model-group,
   .filter-group,
   .area-select,

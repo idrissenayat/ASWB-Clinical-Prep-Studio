@@ -892,35 +892,39 @@ function PracticeView({
           <h2>Practice with rationales</h2>
         </div>
         <div className="practice-filter-panel">
-          <ExamModelSelector value={examModel} onChange={changeExamModel} />
-          <div className="filter-group">
-            <span className="filter-label">Domain</span>
-            <div className="segmented-control" aria-label="Domain filter">
-              <button
-                type="button"
-                className={domainFilter === "all" ? "is-selected" : ""}
-                onClick={() => changeFilter("all")}
-              >
-                All
-              </button>
-              {domains.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={domainFilter === item.id ? "is-selected" : ""}
-                  onClick={() => changeFilter(item.id)}
-                >
-                  {item.shortName}
-                </button>
-              ))}
-            </div>
+          <div className="filter-row is-model">
+            <ExamModelSelector value={examModel} onChange={changeExamModel} />
           </div>
-          <AreaSelect
-            examModel={examModel}
-            domainFilter={domainFilter}
-            value={areaFilter}
-            onChange={changeAreaFilter}
-          />
+          <div className="filter-row is-dependent">
+            <div className="filter-group">
+              <span className="filter-label">Domain</span>
+              <div className="segmented-control" aria-label="Domain filter">
+                <button
+                  type="button"
+                  className={domainFilter === "all" ? "is-selected" : ""}
+                  onClick={() => changeFilter("all")}
+                >
+                  All
+                </button>
+                {domains.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={domainFilter === item.id ? "is-selected" : ""}
+                    onClick={() => changeFilter(item.id)}
+                  >
+                    {item.shortName}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <AreaSelect
+              examModel={examModel}
+              domainFilter={domainFilter}
+              value={areaFilter}
+              onChange={changeAreaFilter}
+            />
+          </div>
         </div>
       </div>
 

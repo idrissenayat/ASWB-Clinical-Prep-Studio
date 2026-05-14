@@ -1,6 +1,8 @@
-import type { Difficulty, DomainId, QuestionInput, SkillType } from "./exam";
+import type { Difficulty, DomainId, ExamAreaId, QuestionInput, SkillType } from "./exam";
 
 type QuestionDraft = {
+  area: ExamAreaId;
+  area2026: ExamAreaId;
   competency: string;
   skill: SkillType;
   difficulty: Difficulty;
@@ -121,6 +123,74 @@ const interventions = [
   "crisis intervention",
 ];
 
+const scenarioMoments = [
+  "At this point",
+  "Before choosing a response",
+  "For the next clinical decision",
+  "Before taking action",
+  "At the current stage of service",
+  "While deciding what to do next",
+  "Before updating the plan",
+  "During this contact",
+  "For this practice decision",
+  "Before making an outside contact",
+  "Before documenting the next step",
+  "During the focused clinical discussion",
+  "Before selecting an intervention",
+  "While reviewing responsibilities",
+  "Before changing the service plan",
+  "At this point in the assessment",
+  "Before moving further",
+];
+
+const scenarioNotes = [
+  "use only the facts provided",
+  "avoid assumptions beyond the stem",
+  "no final plan has been made",
+  "choose from the information given",
+  "focus on the most directly supported response",
+  "no additional verified facts are available",
+  "do not add facts that are not stated",
+  "base the response on confirmed information",
+  "the stem gives the information needed for the next step",
+  "choose the response that follows from the stated facts",
+  "the next step should match the presented concern",
+  "respond to the facts available",
+  "the answer should not assume missing details",
+  "work from the stated client information",
+  "select the response supported by the scenario",
+  "ground the decision in what is known",
+  "consider only facts that are given",
+  "respond to the stated priority",
+  "choose the best-supported next step",
+];
+
+function scenarioContext(domain: DomainId, number: number) {
+  const domainOffset: Record<DomainId, number> = {
+    ethics: 1,
+    assessment: 2,
+    intervention: 3,
+  };
+
+  return `${pick(scenarioMoments, number, domainOffset[domain])}, ${pick(
+    scenarioNotes,
+    number,
+    domainOffset[domain] + 3,
+  )}.`;
+}
+
+function contextualizeStem(stem: string, domain: DomainId, number: number) {
+  const promptMatch = stem.match(/(?:^|\s)((?:What|Which|How|At approximately)\b[\s\S]*\?)$/);
+  const context = scenarioContext(domain, number);
+
+  if (!promptMatch || typeof promptMatch.index !== "number") {
+    return stem.trim().endsWith("?") ? `${context} ${stem}` : `${stem} ${context}`;
+  }
+
+  const lead = stem.slice(0, promptMatch.index).trimEnd();
+  return lead ? `${lead} ${context} ${promptMatch[1]}` : `${context} ${promptMatch[1]}`;
+}
+
 function pick<T>(items: T[], index: number, offset = 0) {
   return items[(index * 7 + offset * 11) % items.length];
 }
@@ -149,11 +219,13 @@ function createQuestion(domain: DomainId, number: number, draft: QuestionDraft):
   return {
     id,
     domain,
+    area: draft.area,
+    area2026: draft.area2026,
     competency: draft.competency,
     skill: draft.skill,
     difficulty: draft.difficulty,
     tags: draft.tags,
-    stem: draft.stem,
+    stem: contextualizeStem(draft.stem, domain, number),
     options,
     answerIndex: options.indexOf(draft.correct),
     rationale: draft.rationale,
@@ -167,6 +239,8 @@ const ethicsTemplates: Template[] = [
     const profile = pick(clientProfiles, index, 2);
     const setting = pick(settings, index, 3);
     return {
+      area: "IVB",
+      area2026: "IA",
       competency: "Confidentiality and collateral contacts",
       skill: "reasoning",
       difficulty: "applied",
@@ -189,6 +263,8 @@ const ethicsTemplates: Template[] = [
     const setting = pick(settings, index, 1);
     const profile = pick(clientProfiles, index, 2);
     return {
+      area: "IVA",
+      area2026: "IA",
       competency: "Informed consent and role clarity",
       skill: "application",
       difficulty: "foundation",
@@ -215,6 +291,8 @@ const ethicsTemplates: Template[] = [
       2,
     );
     return {
+      area: "IVA",
+      area2026: "IB",
       competency: "Professional boundaries",
       skill: "reasoning",
       difficulty: "applied",
@@ -237,6 +315,8 @@ const ethicsTemplates: Template[] = [
     const profile = pick(clientProfiles, index, 3);
     const risk = pick(["child neglect", "elder exploitation", "vulnerable adult abuse", "a credible threat of serious harm"], index, 4);
     return {
+      area: "IVB",
+      area2026: "IB",
       competency: "Mandatory reporting and protective duties",
       skill: "reasoning",
       difficulty: "exam-ready",
@@ -262,6 +342,8 @@ const ethicsTemplates: Template[] = [
       5,
     );
     return {
+      area: "IVB",
+      area2026: "IB",
       competency: "Records and documentation integrity",
       skill: "application",
       difficulty: "applied",
@@ -284,6 +366,8 @@ const ethicsTemplates: Template[] = [
     const profile = pick(clientProfiles, index, 1);
     const refusal = pick(["medication evaluation", "group therapy", "residential placement", "family involvement"], index, 2);
     return {
+      area: "IVC",
+      area2026: "IB",
       competency: "Self-determination",
       skill: "reasoning",
       difficulty: "applied",
@@ -306,6 +390,8 @@ const ethicsTemplates: Template[] = [
     const profile = pick(clientProfiles, index, 2);
     const specialty = pick(["complex trauma", "eating disorders", "neurocognitive disorders", "forensic evaluations"], index, 3);
     return {
+      area: "IVC",
+      area2026: "IA",
       competency: "Competence and consultation",
       skill: "application",
       difficulty: "foundation",
@@ -327,6 +413,8 @@ const ethicsTemplates: Template[] = [
   (index) => {
     const issue = pick(["appears impaired", "misses required documentation", "uses demeaning language", "ignores safety procedures"], index, 4);
     return {
+      area: "IVA",
+      area2026: "IA",
       competency: "Responsibilities to colleagues and clients",
       skill: "reasoning",
       difficulty: "exam-ready",
@@ -348,6 +436,8 @@ const ethicsTemplates: Template[] = [
   (index) => {
     const techIssue = pick(["a lost device", "a telehealth client in another state", "a request to text clinical details", "a family member joining off-camera"], index, 5);
     return {
+      area: "IVB",
+      area2026: "IB",
       competency: "Technology-assisted practice",
       skill: "application",
       difficulty: "applied",
@@ -370,6 +460,8 @@ const ethicsTemplates: Template[] = [
     const profile = pick(clientProfiles, index, 2);
     const ending = pick(["the worker is leaving the agency", "the client has met goals", "the client is moving", "fees have become a barrier"], index, 3);
     return {
+      area: "IVA",
+      area2026: "IB",
       competency: "Termination and continuity",
       skill: "application",
       difficulty: "foundation",
@@ -392,6 +484,8 @@ const ethicsTemplates: Template[] = [
     const context = pick(culturalContexts, index, 2);
     const setting = pick(settings, index, 3);
     return {
+      area: "IVA",
+      area2026: "IC",
       competency: "Diversity and social justice",
       skill: "reasoning",
       difficulty: "applied",
@@ -414,6 +508,8 @@ const ethicsTemplates: Template[] = [
     const profile = pick(clientProfiles, index, 4);
     const barrier = pick(["language access needs", "disability-related stigma", "immigration stress", "racial discrimination"], index, 5);
     return {
+      area: "IVA",
+      area2026: "IC",
       competency: "Accessibility and client rights",
       skill: "application",
       difficulty: "foundation",
@@ -432,6 +528,52 @@ const ethicsTemplates: Template[] = [
         "Access is part of ethical service, not an optional courtesy.",
     };
   },
+  (index) => {
+    const limit = pick(["harm to self or others", "abuse reporting", "court order requirements", "professional consultation"], index, 1);
+    return {
+      area: "IVA",
+      area2026: "IA",
+      competency: "Informed consent and confidentiality limits",
+      skill: "recall",
+      difficulty: "foundation",
+      tags: ["informed consent", "confidentiality", "ethics"],
+      stem: `Which concept BEST describes explaining services, risks, alternatives, confidentiality limits such as ${limit}, and client rights before clinical work proceeds?`,
+      correct:
+        "Informed consent",
+      distractors: [
+        "Countertransference",
+        "Case consultation",
+        "Discharge planning",
+      ],
+      rationale:
+        "Informed consent means the client understands the service, expected use of information, limits of confidentiality, risks, benefits, alternatives, and rights.",
+      examLens:
+        "Recall items often ask for the professional concept that matches the practice task.",
+    };
+  },
+  (index) => {
+    const strain = pick(["emotional exhaustion", "reduced empathy", "intrusive trauma reminders", "feeling detached from clients"], index, 2);
+    return {
+      area: "IVC",
+      area2026: "IA",
+      competency: "Professional development and self-care",
+      skill: "recall",
+      difficulty: "foundation",
+      tags: ["self-care", "burnout", "secondary trauma", "professional development"],
+      stem: `A clinician notices ${strain} after repeated exposure to client trauma. Which professional responsibility is MOST directly involved?`,
+      correct:
+        "Using supervision, consultation, self-care, and professional development to protect competent practice",
+      distractors: [
+        "Avoiding all clients with trauma histories",
+        "Disclosing personal trauma details to clients to normalize the reaction",
+        "Continuing without support because the reaction is private",
+      ],
+      rationale:
+        "Burnout, secondary trauma, and compassion fatigue can affect competent service, so the worker should use support, self-care, and professional development.",
+      examLens:
+        "Use-of-self questions connect worker well-being to client welfare and competence.",
+    };
+  },
 ];
 
 const assessmentTemplates: Template[] = [
@@ -439,6 +581,8 @@ const assessmentTemplates: Template[] = [
     const profile = pick(clientProfiles, index, 1);
     const statement = pick(riskStatements, index, 2);
     return {
+      area: "IIB",
+      area2026: "IIB",
       competency: "Risk assessment",
       skill: "reasoning",
       difficulty: "exam-ready",
@@ -461,6 +605,8 @@ const assessmentTemplates: Template[] = [
     const profile = pick(clientProfiles, index, 2);
     const concern = pick(concerns, index, 3);
     return {
+      area: "IIA",
+      area2026: "IIA",
       competency: "Biopsychosocial assessment",
       skill: "application",
       difficulty: "foundation",
@@ -480,6 +626,59 @@ const assessmentTemplates: Template[] = [
     };
   },
   (index) => {
+    const profile = pick(clientProfiles, index, 3);
+    const setting = pick(settings, index, 4);
+    const pressure = pick(
+      ["poverty-related stress", "school system pressure", "limited community resources", "family role changes", "neighborhood safety concerns"],
+      index,
+      5,
+    );
+    return {
+      area: "IB",
+      area2026: "IIA",
+      competency: "Person-in-environment and social systems",
+      skill: "reasoning",
+      difficulty: "applied",
+      tags: ["person-in-environment", "systems", "social environment"],
+      stem: `At a ${setting}, ${profile} connects current functioning to ${pressure}. What should the social worker assess?`,
+      correct:
+        "The interaction among individual functioning, relationships, environment, resources, and systems affecting the client",
+      distractors: [
+        "Only individual symptoms because systems factors are not part of clinical assessment",
+        "Only agency eligibility rules before understanding the client's situation",
+        "Whether the client can solve the environmental stressor without support",
+      ],
+      rationale:
+        "Person-in-environment assessment considers how individual, relational, community, and institutional factors shape functioning and needs.",
+      examLens:
+        "ASWB questions often expect you to include environment when it affects functioning.",
+    };
+  },
+  (index) => {
+    const relationship = pick(["family conflict", "group pressure", "caregiver stress", "interpersonal conflict", "community disconnection"], index, 1);
+    const impact = pick(["school functioning", "treatment engagement", "daily routines", "support seeking", "coping patterns"], index, 2);
+    return {
+      area: "IB",
+      area2026: "IIA",
+      competency: "Family and social environment dynamics",
+      skill: "application",
+      difficulty: "foundation",
+      tags: ["family dynamics", "social environment", "support systems"],
+      stem: `A client reports that ${relationship} is affecting ${impact}. What assessment focus is MOST appropriate?`,
+      correct:
+        "Assess relationship patterns, roles, supports, stressors, safety, and the client's functioning in context",
+      distractors: [
+        "Ignore relationship patterns unless the client requests family therapy",
+        "Assume the most vocal family member has the most accurate view",
+        "Focus only on diagnosis before asking about the client's environment",
+      ],
+      rationale:
+        "Family and social environment dynamics are part of assessing client functioning, stress, supports, and risk.",
+      examLens:
+        "Clinical assessment includes the systems around the client.",
+    };
+  },
+  (index) => {
     const symptom = pick(
       ["new confusion", "visual hallucinations", "sudden personality change", "severe headaches", "memory gaps", "tremors and stiffness"],
       index,
@@ -487,6 +686,8 @@ const assessmentTemplates: Template[] = [
     );
     const trigger = pick(["after a fall", "after a medication change", "during withdrawal", "with fever", "after days without sleep"], index, 5);
     return {
+      area: "IIB",
+      area2026: "IIB",
       competency: "Medical and differential assessment",
       skill: "reasoning",
       difficulty: "exam-ready",
@@ -509,6 +710,8 @@ const assessmentTemplates: Template[] = [
     const profile = pick(["a preschool child", "an adolescent", "an older adult", "a new parent", "a young school-age child"], index, 1);
     const sign = pick(["regression", "peer withdrawal", "caregiver role strain", "developmental delays", "attachment distress"], index, 2);
     return {
+      area: "IA",
+      area2026: "IIA",
       competency: "Human development",
       skill: "application",
       difficulty: "foundation",
@@ -531,6 +734,8 @@ const assessmentTemplates: Template[] = [
     const context = pick(culturalContexts, index, 3);
     const concern = pick(concerns, index, 4);
     return {
+      area: "IC",
+      area2026: "IIA",
       competency: "Culture, identity, and discrimination",
       skill: "reasoning",
       difficulty: "applied",
@@ -553,6 +758,8 @@ const assessmentTemplates: Template[] = [
     const profile = pick(clientProfiles, index, 1);
     const condition = pick(["daily alcohol use", "opioid relapse", "stimulant use", "co-occurring depression", "unstable housing"], index, 2);
     return {
+      area: "IIB",
+      area2026: "IIC",
       competency: "Substance use and level of care",
       skill: "reasoning",
       difficulty: "exam-ready",
@@ -575,6 +782,8 @@ const assessmentTemplates: Template[] = [
     const source = pick(collateralSources, index, 2);
     const concern = pick(concerns, index, 3);
     return {
+      area: "IIA",
+      area2026: "IIB",
       competency: "Collateral data and testing",
       skill: "application",
       difficulty: "foundation",
@@ -600,6 +809,8 @@ const assessmentTemplates: Template[] = [
       4,
     );
     return {
+      area: "IIB",
+      area2026: "IIB",
       competency: "Motivation and readiness",
       skill: "application",
       difficulty: "applied",
@@ -625,6 +836,8 @@ const assessmentTemplates: Template[] = [
       5,
     );
     return {
+      area: "IIB",
+      area2026: "IIA",
       competency: "Abuse, neglect, and exploitation",
       skill: "reasoning",
       difficulty: "exam-ready",
@@ -646,6 +859,8 @@ const assessmentTemplates: Template[] = [
   (index) => {
     const finding = pick(["disorientation", "flat affect", "pressured speech", "poor impulse control", "paranoid thought content"], index, 2);
     return {
+      area: "IIB",
+      area2026: "IIB",
       competency: "Mental status examination",
       skill: "application",
       difficulty: "foundation",
@@ -668,6 +883,8 @@ const assessmentTemplates: Template[] = [
     const profile = pick(clientProfiles, index, 3);
     const goal = pick(["reduce panic-related avoidance", "stabilize housing and treatment attendance", "increase safe coping after trauma reminders", "support recovery while reducing relapse risk"], index, 4);
     return {
+      area: "IIC",
+      area2026: "IIC",
       competency: "Treatment planning and resources",
       skill: "reasoning",
       difficulty: "applied",
@@ -686,6 +903,52 @@ const assessmentTemplates: Template[] = [
         "A good plan grows from assessment data, not from provider convenience.",
     };
   },
+  (index) => {
+    const factor = pick(["medical status", "family support", "culture", "housing", "spiritual meaning"], index, 1);
+    return {
+      area: "IIA",
+      area2026: "IIA",
+      competency: "Biopsychosocial and person-in-environment concepts",
+      skill: "recall",
+      difficulty: "foundation",
+      tags: ["biopsychosocial", "person-in-environment", "assessment"],
+      stem: `Which assessment model BEST fits integrating symptoms, strengths, environment, relationships, and ${factor}?`,
+      correct:
+        "Biopsychosocial person-in-environment assessment",
+      distractors: [
+        "Single-symptom screening only",
+        "Provider-centered treatment selection",
+        "Discharge planning without assessment",
+      ],
+      rationale:
+        "Biopsychosocial and person-in-environment assessment integrates individual functioning with relationships, culture, resources, and environmental conditions.",
+      examLens:
+        "Recall questions may test the name of a broad assessment concept.",
+    };
+  },
+  (index) => {
+    const observation = pick(["appearance and behavior", "mood and affect", "thought process", "orientation", "insight and judgment"], index, 2);
+    return {
+      area: "IIB",
+      area2026: "IIB",
+      competency: "Mental status examination",
+      skill: "recall",
+      difficulty: "foundation",
+      tags: ["mental status exam", "assessment", "diagnosis"],
+      stem: `A mental status examination includes ${observation}. This finding is BEST understood as what type of information?`,
+      correct:
+        "Current clinical observation that must be interpreted with history, risk, and context",
+      distractors: [
+        "A complete diagnosis by itself",
+        "Collateral information that replaces the client's report",
+        "A treatment plan that does not require further assessment",
+      ],
+      rationale:
+        "Mental status findings document current observations and should be integrated with broader assessment data.",
+      examLens:
+        "MSE recall questions test what the observation means and what it can and cannot prove.",
+    };
+  },
 ];
 
 const interventionTemplates: Template[] = [
@@ -693,6 +956,8 @@ const interventionTemplates: Template[] = [
     const profile = pick(clientProfiles, index, 2);
     const concern = pick(concerns, index, 3);
     return {
+      area: "IIIA",
+      area2026: "IIIA",
       competency: "Helping relationship and practice concepts",
       skill: "application",
       difficulty: "foundation",
@@ -715,6 +980,8 @@ const interventionTemplates: Template[] = [
     const profile = pick(clientProfiles, index, 1);
     const crisis = pick(["a community shooting", "sudden eviction", "a panic episode", "a recent assault", "a disaster displacement"], index, 2);
     return {
+      area: "IIIB",
+      area2026: "IIIB",
       competency: "Crisis intervention",
       skill: "reasoning",
       difficulty: "exam-ready",
@@ -736,6 +1003,8 @@ const interventionTemplates: Template[] = [
   (index) => {
     const concern = pick(concerns, index, 2);
     return {
+      area: "IIIB",
+      area2026: "IIIB",
       competency: "Motivational interviewing",
       skill: "application",
       difficulty: "applied",
@@ -761,6 +1030,8 @@ const interventionTemplates: Template[] = [
       3,
     );
     return {
+      area: "IIIB",
+      area2026: "IIIB",
       competency: "Cognitive behavioral intervention",
       skill: "application",
       difficulty: "foundation",
@@ -782,6 +1053,8 @@ const interventionTemplates: Template[] = [
   (index) => {
     const symptom = pick(["dissociation", "nightmares", "hypervigilance", "avoidance", "emotional flooding"], index, 4);
     return {
+      area: "IIIB",
+      area2026: "IIIB",
       competency: "Trauma-informed intervention",
       skill: "reasoning",
       difficulty: "exam-ready",
@@ -803,6 +1076,8 @@ const interventionTemplates: Template[] = [
   (index) => {
     const groupIssue = pick(["one member dominates", "members argue", "a quiet member withdraws", "confidentiality is questioned"], index, 5);
     return {
+      area: "IIIB",
+      area2026: "IIIB",
       competency: "Group and family process",
       skill: "application",
       difficulty: "applied",
@@ -824,6 +1099,8 @@ const interventionTemplates: Template[] = [
   (index) => {
     const barrier = pick(["transportation loss", "childcare instability", "insurance denial", "food insecurity", "limited phone access"], index, 1);
     return {
+      area: "IIIC",
+      area2026: "IIIB",
       competency: "Case management and access",
       skill: "application",
       difficulty: "applied",
@@ -846,6 +1123,8 @@ const interventionTemplates: Template[] = [
     const profile = pick(clientProfiles, index, 3);
     const risk = pick(["suicidal urges", "self-harm urges", "unsafe conflict at home", "relapse triggers", "panic escalation"], index, 4);
     return {
+      area: "IIIB",
+      area2026: "IIIB",
       competency: "Safety planning and coping skills",
       skill: "application",
       difficulty: "exam-ready",
@@ -867,6 +1146,8 @@ const interventionTemplates: Template[] = [
   (index) => {
     const result = pick(["symptoms are unchanged", "goals have been met", "attendance has dropped", "new barriers have emerged"], index, 2);
     return {
+      area: "IIIB",
+      area2026: "IIIC",
       competency: "Evaluation and termination",
       skill: "reasoning",
       difficulty: "applied",
@@ -888,6 +1169,8 @@ const interventionTemplates: Template[] = [
   (index) => {
     const outcome = pick(["dropout rates increased", "client goal completion improved", "referral follow-through decreased", "waitlist times changed"], index, 4);
     return {
+      area: "IIIC",
+      area2026: "IIIC",
       competency: "Practice evaluation and outcomes",
       skill: "reasoning",
       difficulty: "applied",
@@ -909,6 +1192,8 @@ const interventionTemplates: Template[] = [
   (index) => {
     const approach = pick(["harm reduction", "assertiveness training", "self-monitoring", "role play", "stress management"], index, 3);
     return {
+      area: "IIIB",
+      area2026: "IIIB",
       competency: "Skills-based intervention",
       skill: "application",
       difficulty: "foundation",
@@ -930,6 +1215,8 @@ const interventionTemplates: Template[] = [
   (index) => {
     const system = pick(["housing", "school", "health care", "criminal justice", "public benefits"], index, 4);
     return {
+      area: "IIID",
+      area2026: "IIIA",
       competency: "Advocacy and interdisciplinary practice",
       skill: "reasoning",
       difficulty: "applied",
@@ -951,6 +1238,8 @@ const interventionTemplates: Template[] = [
   (index) => {
     const supervisionIssue = pick(["countertransference", "unclear learning goals", "a complex risk case", "a boundary concern"], index, 2);
     return {
+      area: "IIID",
+      area2026: "IIID",
       competency: "Supervision and consultation",
       skill: "reasoning",
       difficulty: "applied",
@@ -972,6 +1261,8 @@ const interventionTemplates: Template[] = [
   (index) => {
     const agencyIssue = pick(["a privacy breach pattern", "inconsistent crisis procedures", "unsafe record access", "unclear referral workflows"], index, 3);
     return {
+      area: "IIID",
+      area2026: "IIID",
       competency: "Policy and administration",
       skill: "application",
       difficulty: "exam-ready",
@@ -988,6 +1279,52 @@ const interventionTemplates: Template[] = [
         "Administrative practice includes policy development, risk reduction, staff training, implementation, and evaluation.",
       examLens:
         "System-level risk needs a system-level response.",
+    };
+  },
+  (index) => {
+    const target = pick(["reducing overdose risk", "safer substance use planning", "reducing injury risk", "linking the client to practical supports"], index, 1);
+    return {
+      area: "IIIB",
+      area2026: "IIIB",
+      competency: "Harm reduction",
+      skill: "recall",
+      difficulty: "foundation",
+      tags: ["harm reduction", "substance use", "intervention"],
+      stem: `Which intervention approach is MOST associated with ${target} even when abstinence is not the client's immediate goal?`,
+      correct:
+        "Harm reduction",
+      distractors: [
+        "Confrontation as the first response",
+        "Unplanned termination",
+        "Insight-oriented interpretation only",
+      ],
+      rationale:
+        "Harm reduction focuses on decreasing risk and increasing safety while respecting client autonomy and readiness.",
+      examLens:
+        "Recall items can ask you to match a named intervention to its main purpose.",
+    };
+  },
+  (index) => {
+    const task = pick(["reviewing progress", "planning follow-up supports", "discussing relapse prevention", "consolidating gains"], index, 2);
+    return {
+      area: "IIIB",
+      area2026: "IIIB",
+      competency: "Planned termination",
+      skill: "recall",
+      difficulty: "foundation",
+      tags: ["termination", "follow-up", "intervention"],
+      stem: `Which treatment phase is MOST associated with ${task} and preparing the client for continuity after services end?`,
+      correct:
+        "Termination",
+      distractors: [
+        "Initial intake",
+        "Crisis triage",
+        "Collateral verification",
+      ],
+      rationale:
+        "Planned termination includes reviewing goals, consolidating progress, arranging follow-up, and preparing for continuity.",
+      examLens:
+        "Termination questions usually reward preparation and continuity, not abrupt ending.",
     };
   },
 ];

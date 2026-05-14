@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import {
   BarChart3,
   BookOpen,
@@ -19,6 +20,8 @@ import {
   Target,
   Timer,
   Trophy,
+  UserPlus,
+  Users,
   XCircle,
 } from "lucide-react";
 import {
@@ -57,12 +60,28 @@ interface ProgressState {
   targetDate: string;
 }
 
+interface UserProfile {
+  id: string;
+  name: string;
+  createdAt: string;
+  progress: ProgressState;
+}
+
+interface ProfileState {
+  profiles: UserProfile[];
+  activeProfileId: string;
+}
+
 const initialProgress: ProgressState = {
   attempts: [],
   bookmarks: [],
   completedTasks: [],
   targetDate: "2026-08-03",
 };
+
+const progressStorageKey = "aswb-clinical-prep-progress-v1";
+const profileStorageKey = "aswb-clinical-prep-user-profiles-v1";
+const activeProfileStorageKey = "aswb-clinical-prep-active-profile-v1";
 
 const navItems: Array<{ id: View; label: string; icon: typeof BarChart3 }> = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
@@ -91,27 +110,95 @@ const examAreaCounts = new Map(
   ),
 );
 
-function useLocalStorage<T>(key: string, initialValue: T) {
-  const [value, setValue] = useState<T>(() => {
-    const stored = window.localStorage.getItem(key);
-    if (!stored) return initialValue;
-
-    try {
-      return JSON.parse(stored) as T;
-    } catch {
-      return initialValue;
-    }
-  });
-
-  useEffect(() => {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  }, [key, value]);
-
-  return [value, setValue] as const;
-}
-
 function shuffle<T>(items: T[]) {
   return [...items].sort(() => Math.random() - 0.5);
+}
+
+function normalizeProgress(value: unknown): ProgressState {
+  if (!value || typeof value !== "object") return initialProgress;
+  const progress = value as Partial<ProgressState>;
+
+  return {
+    attempts: Array.isArray(progress.attempts) ? (progress.attempts as Attempt[]) : [],
+    bookmarks: Array.isArray(progress.bookmarks) ? progress.bookmarks.filter(Boolean) : [],
+    completedTasks: Array.isArray(progress.completedTasks)
+      ? progress.completedTasks.filter(Boolean)
+      : [],
+    targetDate:
+      typeof progress.targetDate === "string" && progress.targetDate
+        ? progress.targetDate
+        : initialProgress.targetDate,
+  };
+}
+
+function createProfileId() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  return `profile-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function createUserProfile(name: string, progress: ProgressState = initialProgress): UserProfile {
+  return {
+    id: createProfileId(),
+    name,
+    createdAt: new Date().toISOString(),
+    progress: normalizeProgress(progress),
+  };
+}
+
+function getUniqueProfileName(profiles: UserProfile[], requestedName: string) {
+  const baseName = requestedName.trim() || `Learner ${profiles.length + 1}`;
+  const existingNames = new Set(profiles.map((profile) => profile.name.toLowerCase()));
+  if (!existingNames.has(baseName.toLowerCase())) return baseName;
+
+  let index = 2;
+  while (existingNames.has(`${baseName} ${index}`.toLowerCase())) index += 1;
+  return `${baseName} ${index}`;
+}
+
+function loadProfileState(): ProfileState {
+  const storedProfiles = window.localStorage.getItem(profileStorageKey);
+
+  if (storedProfiles) {
+    try {
+      const parsedProfiles = JSON.parse(storedProfiles) as UserProfile[];
+      const profiles = parsedProfiles
+        .filter((profile) => profile?.id && profile?.name)
+        .map((profile) => ({
+          id: profile.id,
+          name: profile.name,
+          createdAt: profile.createdAt || new Date().toISOString(),
+          progress: normalizeProgress(profile.progress),
+        }));
+
+      if (profiles.length) {
+        const storedActiveProfileId = window.localStorage.getItem(activeProfileStorageKey);
+        return {
+          profiles,
+          activeProfileId: profiles.some((profile) => profile.id === storedActiveProfileId)
+            ? storedActiveProfileId!
+            : profiles[0].id,
+        };
+      }
+    } catch {
+      window.localStorage.removeItem(profileStorageKey);
+    }
+  }
+
+  let migratedProgress = initialProgress;
+  const legacyProgress = window.localStorage.getItem(progressStorageKey);
+  if (legacyProgress) {
+    try {
+      migratedProgress = normalizeProgress(JSON.parse(legacyProgress));
+    } catch {
+      migratedProgress = initialProgress;
+    }
+  }
+
+  const defaultProfile = createUserProfile("Learner 1", migratedProgress);
+  return {
+    profiles: [defaultProfile],
+    activeProfileId: defaultProfile.id,
+  };
 }
 
 function formatTime(minutes: number) {
@@ -281,12 +368,73 @@ function makeSimulation(
 
 function App() {
   const [view, setView] = useState<View>("dashboard");
-  const [progress, setProgress] = useLocalStorage<ProgressState>(
-    "aswb-clinical-prep-progress-v1",
-    initialProgress,
-  );
+  const [profileState, setProfileState] = useState<ProfileState>(() => loadProfileState());
+  const activeProfile =
+    profileState.profiles.find((profile) => profile.id === profileState.activeProfileId) ??
+    profileState.profiles[0];
+  const progress = activeProfile.progress;
+
+  useEffect(() => {
+    window.localStorage.setItem(profileStorageKey, JSON.stringify(profileState.profiles));
+    window.localStorage.setItem(activeProfileStorageKey, profileState.activeProfileId);
+    window.localStorage.removeItem(progressStorageKey);
+  }, [profileState]);
 
   const stats = useMemo(() => buildStats(progress), [progress]);
+
+  const setProgress = (updater: ProgressState | ((current: ProgressState) => ProgressState)) => {
+    setProfileState((currentState) => ({
+      ...currentState,
+      profiles: currentState.profiles.map((profile) => {
+        if (profile.id !== currentState.activeProfileId) return profile;
+        const nextProgress =
+          typeof updater === "function" ? updater(profile.progress) : updater;
+        return {
+          ...profile,
+          progress: normalizeProgress(nextProgress),
+        };
+      }),
+    }));
+  };
+
+  const switchProfile = (profileId: string) => {
+    setProfileState((currentState) =>
+      currentState.profiles.some((profile) => profile.id === profileId)
+        ? { ...currentState, activeProfileId: profileId }
+        : currentState,
+    );
+  };
+
+  const addProfile = (name: string) => {
+    setProfileState((currentState) => {
+      const profile = createUserProfile(getUniqueProfileName(currentState.profiles, name));
+      return {
+        profiles: [...currentState.profiles, profile],
+        activeProfileId: profile.id,
+      };
+    });
+    setView("dashboard");
+  };
+
+  const removeProfile = (profileId: string) => {
+    const profile = profileState.profiles.find((item) => item.id === profileId);
+    if (!profile || profileState.profiles.length <= 1) return;
+    const confirmed = window.confirm(
+      `Remove ${profile.name} and all saved progress for this learner?`,
+    );
+    if (!confirmed) return;
+
+    setProfileState((currentState) => {
+      const nextProfiles = currentState.profiles.filter((item) => item.id !== profileId);
+      return {
+        profiles: nextProfiles,
+        activeProfileId:
+          currentState.activeProfileId === profileId
+            ? nextProfiles[0].id
+            : currentState.activeProfileId,
+      };
+    });
+  };
 
   const recordAttempt = (
     question: Question,
@@ -341,7 +489,9 @@ function App() {
   };
 
   const resetProgress = () => {
-    const confirmed = window.confirm("Reset all saved attempts, bookmarks, and planner progress?");
+    const confirmed = window.confirm(
+      `Reset saved attempts, bookmarks, and planner progress for ${activeProfile.name}?`,
+    );
     if (confirmed) setProgress(initialProgress);
   };
 
@@ -359,29 +509,40 @@ function App() {
           </div>
         </div>
 
-        <nav className="top-nav" aria-label="Primary navigation">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.id}
-                className={view === item.id ? "nav-button is-active" : "nav-button"}
-                type="button"
-                aria-current={view === item.id ? "page" : undefined}
-                onClick={() => setView(item.id)}
-              >
-                <Icon aria-hidden="true" size={17} />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
+        <div className="header-tools">
+          <nav className="top-nav" aria-label="Primary navigation">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  className={view === item.id ? "nav-button is-active" : "nav-button"}
+                  type="button"
+                  aria-current={view === item.id ? "page" : undefined}
+                  onClick={() => setView(item.id)}
+                >
+                  <Icon aria-hidden="true" size={17} />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+          <ProfileSwitcher
+            profiles={profileState.profiles}
+            activeProfileId={activeProfile.id}
+            onSwitch={switchProfile}
+            onCreate={addProfile}
+            onRemove={removeProfile}
+          />
+        </div>
       </header>
 
       {view === "dashboard" && (
         <Dashboard
           stats={stats}
           progress={progress}
+          activeProfile={activeProfile}
+          profileCount={profileState.profiles.length}
           setView={setView}
           resetProgress={resetProgress}
         />
@@ -407,14 +568,88 @@ function App() {
   );
 }
 
+function ProfileSwitcher({
+  profiles,
+  activeProfileId,
+  onSwitch,
+  onCreate,
+  onRemove,
+}: {
+  profiles: UserProfile[];
+  activeProfileId: string;
+  onSwitch: (profileId: string) => void;
+  onCreate: (name: string) => void;
+  onRemove: (profileId: string) => void;
+}) {
+  const [newProfileName, setNewProfileName] = useState("");
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const name = newProfileName.trim();
+    if (!name) return;
+    onCreate(name);
+    setNewProfileName("");
+  };
+
+  return (
+    <section className="profile-switcher" aria-label="Learner profiles">
+      <label className="profile-select">
+        <span>
+          <Users aria-hidden="true" size={14} />
+          Learner
+        </span>
+        <select
+          aria-label="Active learner profile"
+          value={activeProfileId}
+          onChange={(event) => onSwitch(event.target.value)}
+        >
+          {profiles.map((profile) => (
+            <option key={profile.id} value={profile.id}>
+              {profile.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <form className="profile-create" onSubmit={handleSubmit}>
+        <input
+          aria-label="New learner name"
+          maxLength={32}
+          placeholder="New learner"
+          type="text"
+          value={newProfileName}
+          onChange={(event) => setNewProfileName(event.target.value)}
+        />
+        <button type="submit" disabled={!newProfileName.trim()}>
+          <UserPlus aria-hidden="true" size={15} />
+          <span>Add</span>
+        </button>
+      </form>
+
+      <button
+        className="profile-remove"
+        type="button"
+        disabled={profiles.length <= 1}
+        onClick={() => onRemove(activeProfileId)}
+      >
+        Remove
+      </button>
+    </section>
+  );
+}
+
 function Dashboard({
   stats,
   progress,
+  activeProfile,
+  profileCount,
   setView,
   resetProgress,
 }: {
   stats: ReturnType<typeof buildStats>;
   progress: ProgressState;
+  activeProfile: UserProfile;
+  profileCount: number;
   setView: (view: View) => void;
   resetProgress: () => void;
 }) {
@@ -667,16 +902,17 @@ function Dashboard({
         <aside className="panel">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Local data</p>
-              <h3>Saved in this browser</h3>
+              <p className="eyebrow">Learner data</p>
+              <h3>{activeProfile.name}'s progress</h3>
             </div>
           </div>
           <p className="muted">
-            Attempts, bookmarks, and planner checks are stored locally on this machine.
+            Attempts, bookmarks, and planner checks are saved separately for this learner in
+            this browser. {profileCount} learner {profileCount === 1 ? "profile is" : "profiles are"} available here.
           </p>
           <button className="danger-action" type="button" onClick={resetProgress}>
             <RotateCcw aria-hidden="true" size={17} />
-            Reset progress
+            Reset this learner
           </button>
         </aside>
       </div>

@@ -15,6 +15,25 @@ Open the local URL printed by Vite, usually:
 http://127.0.0.1:5173/
 ```
 
+## Supabase Backend
+
+The app works in local-only mode by default. To enable real user accounts and cross-device
+progress sync, create a Supabase project and add these variables to `.env.local`:
+
+```bash
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+```
+
+Then run the SQL migration in `supabase/migrations/202605140001_create_learner_profiles.sql`
+from the Supabase SQL editor or Supabase CLI. The migration creates a `learner_profiles`
+table with Row Level Security so each authenticated user can only access their own learner
+profiles and saved progress.
+
+In Supabase Auth settings, set the site URL and redirect URLs to the app URL you are using,
+for example `http://127.0.0.1:5173/` locally and the production URL after deployment. Email
+confirmation and password reset links use those URLs to return students to the app.
+
 ## Features
 
 - Blueprint-weighted readiness dashboard
@@ -25,8 +44,9 @@ http://127.0.0.1:5173/
 - Timed simulation sprints using the selected ASWB model's question count and pacing
 - The 2,500-question practice bank is mapped to both the 2026 blueprint and the 2018 pre-transition outline
 - Flashcards for high-yield clinical judgment
-- Study planner with browser-local progress
-- Bookmarks, attempt history, accuracy, and coverage saved in `localStorage`
+- Study planner with saved progress
+- Bookmarks, attempt history, accuracy, and coverage saved locally or synced through Supabase when configured
+- Account sign-up, sign-in, password reset, and signed-in password management when Supabase is configured
 
 ## Exam References
 

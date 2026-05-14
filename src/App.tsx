@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import type { Session } from "@supabase/supabase-js";
 import {
   BarChart3,
   BookOpen,
@@ -9,17 +10,25 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Cloud,
   ClipboardCheck,
   ExternalLink,
   Flag,
   BookHeart,
   HeartHandshake,
+  KeyRound,
   Layers3,
+  Lock,
+  LogOut,
+  Mail,
   Play,
   RotateCcw,
+  ShieldCheck,
+  Settings,
   Target,
   Timer,
   Trophy,
+  UserCircle,
   UserPlus,
   Users,
   XCircle,
@@ -37,6 +46,7 @@ import {
   planTasks,
   questions,
 } from "./data/exam";
+import { isSupabaseConfigured, supabase } from "./lib/supabase";
 
 type View = "dashboard" | "practice" | "simulation" | "flashcards" | "planner";
 type AreaFilter = ExamAreaId | "all";
@@ -72,6 +82,16 @@ interface ProfileState {
   activeProfileId: string;
 }
 
+interface LearnerProfileRow {
+  id: string;
+  name: string;
+  created_at: string;
+  progress: unknown;
+}
+
+type SyncStatus = "local" | "loading" | "synced" | "saving" | "error";
+type AuthMode = "sign-in" | "sign-up" | "reset-password";
+
 const initialProgress: ProgressState = {
   attempts: [],
   bookmarks: [],
@@ -82,6 +102,7 @@ const initialProgress: ProgressState = {
 const progressStorageKey = "aswb-clinical-prep-progress-v1";
 const profileStorageKey = "aswb-clinical-prep-user-profiles-v1";
 const activeProfileStorageKey = "aswb-clinical-prep-active-profile-v1";
+const minimumPasswordLength = 8;
 
 const navItems: Array<{ id: View; label: string; icon: typeof BarChart3 }> = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
@@ -134,6 +155,10 @@ function normalizeProgress(value: unknown): ProgressState {
 function createProfileId() {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();
   return `profile-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function getAuthRedirectUrl() {
+  return `${window.location.origin}${window.location.pathname}`;
 }
 
 function createUserProfile(name: string, progress: ProgressState = initialProgress): UserProfile {
@@ -198,6 +223,35 @@ function loadProfileState(): ProfileState {
   return {
     profiles: [defaultProfile],
     activeProfileId: defaultProfile.id,
+  };
+}
+
+function profileStateFingerprint(profileState: ProfileState) {
+  return JSON.stringify({
+    activeProfileId: profileState.activeProfileId,
+    profiles: profileState.profiles.map((profile) => ({
+      id: profile.id,
+      name: profile.name,
+      createdAt: profile.createdAt,
+      progress: normalizeProgress(profile.progress),
+    })),
+  });
+}
+
+function profileFromRow(row: LearnerProfileRow): UserProfile {
+  return {
+    id: row.id,
+    name: row.name,
+    createdAt: row.created_at,
+    progress: normalizeProgress(row.progress),
+  };
+}
+
+function ensureProfileStateHasActiveProfile(profiles: UserProfile[]): ProfileState {
+  const safeProfiles = profiles.length ? profiles : [createUserProfile("Learner 1")];
+  return {
+    profiles: safeProfiles,
+    activeProfileId: safeProfiles[0].id,
   };
 }
 
@@ -369,6 +423,16 @@ function makeSimulation(
 function App() {
   const [view, setView] = useState<View>("dashboard");
   const [profileState, setProfileState] = useState<ProfileState>(() => loadProfileState());
+  const [session, setSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(!isSupabaseConfigured);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(
+    isSupabaseConfigured ? "loading" : "local",
+  );
+  const [syncError, setSyncError] = useState("");
+  const [passwordRecoveryActive, setPasswordRecoveryActive] = useState(false);
+  const [remoteReady, setRemoteReady] = useState(!isSupabaseConfigured);
+  const lastRemoteFingerprint = useRef("");
+  const remoteSaveTimer = useRef<number | null>(null);
   const activeProfile =
     profileState.profiles.find((profile) => profile.id === profileState.activeProfileId) ??
     profileState.profiles[0];
@@ -379,6 +443,155 @@ function App() {
     window.localStorage.setItem(activeProfileStorageKey, profileState.activeProfileId);
     window.localStorage.removeItem(progressStorageKey);
   }, [profileState]);
+
+  useEffect(() => {
+    if (!supabase) return undefined;
+
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setSession(data.session);
+      setAuthReady(true);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      setSession(nextSession);
+      setAuthReady(true);
+      if (event === "PASSWORD_RECOVERY") {
+        setPasswordRecoveryActive(true);
+      }
+      if (!nextSession) {
+        setSyncStatus("loading");
+        setRemoteReady(false);
+        lastRemoteFingerprint.current = "";
+        setPasswordRecoveryActive(false);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!supabase || !session?.user) return;
+
+    const client = supabase;
+    const userId = session.user.id;
+    let cancelled = false;
+    const localProfiles = profileState.profiles;
+    setSyncStatus("loading");
+    setSyncError("");
+    setRemoteReady(false);
+
+    async function loadRemoteProfiles() {
+      const { data, error } = await client
+        .from("learner_profiles")
+        .select("id, name, created_at, progress")
+        .order("created_at", { ascending: true });
+
+      if (cancelled) return;
+
+      if (error) {
+        setSyncStatus("error");
+        setSyncError(error.message);
+        return;
+      }
+
+      let profiles = ((data ?? []) as LearnerProfileRow[]).map(profileFromRow);
+
+      if (!profiles.length) {
+        const rowsToCreate = localProfiles.map((profile) => ({
+          user_id: userId,
+          name: profile.name,
+          progress: normalizeProgress(profile.progress),
+        }));
+        const { data: insertedRows, error: insertError } = await client
+          .from("learner_profiles")
+          .insert(rowsToCreate.length ? rowsToCreate : [{ user_id: userId, name: "Learner 1", progress: initialProgress }])
+          .select("id, name, created_at, progress")
+          .order("created_at", { ascending: true });
+
+        if (cancelled) return;
+
+        if (insertError) {
+          setSyncStatus("error");
+          setSyncError(insertError.message);
+          return;
+        }
+
+        profiles = ((insertedRows ?? []) as LearnerProfileRow[]).map(profileFromRow);
+      }
+
+      const nextProfileState = ensureProfileStateHasActiveProfile(profiles);
+      lastRemoteFingerprint.current = profileStateFingerprint(nextProfileState);
+      setProfileState(nextProfileState);
+      setSyncStatus("synced");
+      setRemoteReady(true);
+    }
+
+    loadRemoteProfiles();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (!supabase || !session?.user || !remoteReady) return undefined;
+
+    const client = supabase;
+    const userId = session.user.id;
+    const fingerprint = profileStateFingerprint(profileState);
+    if (fingerprint === lastRemoteFingerprint.current) return undefined;
+
+    if (remoteSaveTimer.current) window.clearTimeout(remoteSaveTimer.current);
+    setSyncStatus("saving");
+    setSyncError("");
+
+    remoteSaveTimer.current = window.setTimeout(async () => {
+      const rows = profileState.profiles.map((profile) => ({
+        id: profile.id,
+        user_id: userId,
+        name: profile.name,
+        created_at: profile.createdAt,
+        progress: normalizeProgress(profile.progress),
+      }));
+
+      const { error: upsertError } = await client
+        .from("learner_profiles")
+        .upsert(rows, { onConflict: "id" });
+
+      if (upsertError) {
+        setSyncStatus("error");
+        setSyncError(upsertError.message);
+        return;
+      }
+
+      const retainedIds = profileState.profiles.map((profile) => profile.id);
+      const { error: deleteError } = await client
+        .from("learner_profiles")
+        .delete()
+        .eq("user_id", userId)
+        .not("id", "in", `(${retainedIds.join(",")})`);
+
+      if (deleteError) {
+        setSyncStatus("error");
+        setSyncError(deleteError.message);
+        return;
+      }
+
+      lastRemoteFingerprint.current = fingerprint;
+      setSyncStatus("synced");
+    }, 700);
+
+    return () => {
+      if (remoteSaveTimer.current) window.clearTimeout(remoteSaveTimer.current);
+    };
+  }, [profileState, session?.user?.id, remoteReady]);
 
   const stats = useMemo(() => buildStats(progress), [progress]);
 
@@ -495,6 +708,33 @@ function App() {
     if (confirmed) setProgress(initialProgress);
   };
 
+  const signOut = async () => {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    setProfileState(loadProfileState());
+    setSyncStatus("loading");
+    setRemoteReady(false);
+    setPasswordRecoveryActive(false);
+  };
+
+  if (isSupabaseConfigured && !authReady) {
+    return <LoadingScreen />;
+  }
+
+  if (isSupabaseConfigured && !session) {
+    return <AuthScreen />;
+  }
+
+  if (isSupabaseConfigured && session && passwordRecoveryActive) {
+    return (
+      <PasswordRecoveryScreen
+        email={session.user.email ?? ""}
+        onComplete={() => setPasswordRecoveryActive(false)}
+        onSignOut={signOut}
+      />
+    );
+  }
+
   return (
     <main className="app-shell">
       <header className="app-header">
@@ -534,6 +774,12 @@ function App() {
             onCreate={addProfile}
             onRemove={removeProfile}
           />
+          <AccountStatus
+            session={session}
+            syncStatus={syncStatus}
+            syncError={syncError}
+            onSignOut={signOut}
+          />
         </div>
       </header>
 
@@ -565,6 +811,510 @@ function App() {
         />
       )}
     </main>
+  );
+}
+
+function LoadingScreen() {
+  return (
+    <main className="auth-shell">
+      <section className="auth-card">
+        <div className="brand-mark" aria-hidden="true">
+          <HeartHandshake className="brand-care" size={27} />
+          <BookHeart className="brand-book" size={16} />
+        </div>
+        <p className="eyebrow">Connecting backend</p>
+        <h1>Loading your study profile</h1>
+        <p className="muted">Preparing Supabase Auth and saved learner progress.</p>
+      </section>
+    </main>
+  );
+}
+
+function AuthScreen() {
+  const [mode, setMode] = useState<AuthMode>("sign-in");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isResetMode = mode === "reset-password";
+
+  const handleAuth = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase) return;
+
+    const normalizedEmail = email.trim();
+    setIsSubmitting(true);
+    setAuthMessage("");
+
+    if (isResetMode) {
+      const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+        redirectTo: getAuthRedirectUrl(),
+      });
+      setIsSubmitting(false);
+
+      if (error) {
+        setAuthMessage(error.message);
+        return;
+      }
+
+      setAuthMessage(
+        "If an account exists for that email, a password reset link has been sent.",
+      );
+      return;
+    }
+
+    if (mode === "sign-up" && password !== confirmPassword) {
+      setIsSubmitting(false);
+      setAuthMessage("Passwords do not match.");
+      return;
+    }
+
+    const result =
+      mode === "sign-in"
+        ? await supabase.auth.signInWithPassword({ email: normalizedEmail, password })
+        : await supabase.auth.signUp({
+            email: normalizedEmail,
+            password,
+            options: { emailRedirectTo: getAuthRedirectUrl() },
+          });
+
+    setIsSubmitting(false);
+
+    if (result.error) {
+      setAuthMessage(result.error.message);
+      return;
+    }
+
+    if (mode === "sign-up" && !result.data.session) {
+      setAuthMessage("Account created. Check your email to confirm your sign-in.");
+    }
+  };
+
+  return (
+    <main className="auth-shell">
+      <section className="auth-card">
+        <div className="auth-brand">
+          <div className="brand-mark" aria-hidden="true">
+            <HeartHandshake className="brand-care" size={27} />
+            <BookHeart className="brand-book" size={16} />
+          </div>
+          <div>
+            <p className="eyebrow">ASWB Clinical Prep Studio</p>
+            <h1>
+              {mode === "sign-in"
+                ? "Sign in to keep progress synced"
+                : mode === "sign-up"
+                  ? "Create your study account"
+                  : "Reset your password"}
+            </h1>
+          </div>
+        </div>
+
+        <p className="muted">
+          {isResetMode
+            ? "Enter your email and we will send a secure link to set a new password."
+            : "Supabase is enabled for this app. Sign in to save attempts, bookmarks, planner progress, and learner profiles across devices."}
+        </p>
+
+        {!isResetMode && (
+          <div className="auth-tabs" aria-label="Authentication mode">
+            <button
+              className={mode === "sign-in" ? "is-active" : ""}
+              type="button"
+              onClick={() => {
+                setMode("sign-in");
+                setAuthMessage("");
+              }}
+            >
+              Sign in
+            </button>
+            <button
+              className={mode === "sign-up" ? "is-active" : ""}
+              type="button"
+              onClick={() => {
+                setMode("sign-up");
+                setAuthMessage("");
+              }}
+            >
+              Create account
+            </button>
+          </div>
+        )}
+
+        <form className="auth-form" onSubmit={handleAuth}>
+          <label>
+            <span>
+              <Mail aria-hidden="true" size={15} />
+              Email
+            </span>
+            <input
+              autoComplete="email"
+              required
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+          </label>
+
+          {!isResetMode && (
+            <label>
+              <span>
+                <Lock aria-hidden="true" size={15} />
+                Password
+              </span>
+              <input
+                autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
+                minLength={minimumPasswordLength}
+                required
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </label>
+          )}
+
+          {mode === "sign-up" && (
+            <label>
+              <span>
+                <KeyRound aria-hidden="true" size={15} />
+                Confirm password
+              </span>
+              <input
+                autoComplete="new-password"
+                minLength={minimumPasswordLength}
+                required
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+              />
+            </label>
+          )}
+
+          {authMessage && <p className="auth-message">{authMessage}</p>}
+
+          <button className="primary-action" type="submit" disabled={isSubmitting}>
+            {isResetMode ? (
+              <KeyRound aria-hidden="true" size={18} />
+            ) : (
+              <Cloud aria-hidden="true" size={18} />
+            )}
+            {isSubmitting
+              ? "Working..."
+              : mode === "sign-in"
+                ? "Sign in"
+                : mode === "sign-up"
+                  ? "Create account"
+                  : "Send reset link"}
+          </button>
+
+          <div className="auth-actions">
+            {mode !== "reset-password" ? (
+              <button
+                className="text-action"
+                type="button"
+                onClick={() => {
+                  setMode("reset-password");
+                  setPassword("");
+                  setConfirmPassword("");
+                  setAuthMessage("");
+                }}
+              >
+                Forgot password?
+              </button>
+            ) : (
+              <button
+                className="text-action"
+                type="button"
+                onClick={() => {
+                  setMode("sign-in");
+                  setAuthMessage("");
+                }}
+              >
+                Back to sign in
+              </button>
+            )}
+          </div>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function PasswordRecoveryScreen({
+  email,
+  onComplete,
+  onSignOut,
+}: {
+  email: string;
+  onComplete: () => void;
+  onSignOut: () => void;
+}) {
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [message, setMessage] = useState("");
+  const [isComplete, setIsComplete] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handlePasswordUpdate = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase) return;
+
+    setMessage("");
+    if (password !== confirmPassword) {
+      setMessage("Passwords do not match.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    const { error } = await supabase.auth.updateUser({ password });
+    setIsSubmitting(false);
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setPassword("");
+    setConfirmPassword("");
+    setIsComplete(true);
+    setMessage("Your password has been updated.");
+  };
+
+  return (
+    <main className="auth-shell">
+      <section className="auth-card">
+        <div className="auth-brand">
+          <div className="brand-mark" aria-hidden="true">
+            <ShieldCheck className="brand-care" size={27} />
+            <KeyRound className="brand-book" size={16} />
+          </div>
+          <div>
+            <p className="eyebrow">Account recovery</p>
+            <h1>Set a new password</h1>
+          </div>
+        </div>
+
+        <p className="muted">
+          {email
+            ? `You are updating the password for ${email}.`
+            : "Create a new password to finish account recovery."}
+        </p>
+
+        <form className="auth-form" onSubmit={handlePasswordUpdate}>
+          {!isComplete && (
+            <>
+              <label>
+                <span>
+                  <Lock aria-hidden="true" size={15} />
+                  New password
+                </span>
+                <input
+                  autoComplete="new-password"
+                  minLength={minimumPasswordLength}
+                  required
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+              </label>
+
+              <label>
+                <span>
+                  <KeyRound aria-hidden="true" size={15} />
+                  Confirm password
+                </span>
+                <input
+                  autoComplete="new-password"
+                  minLength={minimumPasswordLength}
+                  required
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                />
+              </label>
+            </>
+          )}
+
+          {message && <p className="auth-message">{message}</p>}
+
+          {isComplete ? (
+            <button className="primary-action" type="button" onClick={onComplete}>
+              <ShieldCheck aria-hidden="true" size={18} />
+              Continue to app
+            </button>
+          ) : (
+            <button className="primary-action" type="submit" disabled={isSubmitting}>
+              <KeyRound aria-hidden="true" size={18} />
+              {isSubmitting ? "Updating..." : "Update password"}
+            </button>
+          )}
+
+          <button className="text-action" type="button" onClick={onSignOut}>
+            Use a different account
+          </button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function AccountStatus({
+  session,
+  syncStatus,
+  syncError,
+  onSignOut,
+}: {
+  session: Session | null;
+  syncStatus: SyncStatus;
+  syncError: string;
+  onSignOut: () => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [accountMessage, setAccountMessage] = useState("");
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  const [isSendingReset, setIsSendingReset] = useState(false);
+  const statusLabel = !isSupabaseConfigured
+    ? "Local mode"
+    : syncStatus === "loading"
+      ? "Loading cloud data"
+      : syncStatus === "saving"
+        ? "Saving"
+        : syncStatus === "error"
+          ? "Sync issue"
+          : "Synced";
+  const email = session?.user.email ?? "";
+
+  const handleAccountPasswordUpdate = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase) return;
+
+    setAccountMessage("");
+    if (password !== confirmPassword) {
+      setAccountMessage("Passwords do not match.");
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    const { error } = await supabase.auth.updateUser({ password });
+    setIsUpdatingPassword(false);
+
+    if (error) {
+      setAccountMessage(error.message);
+      return;
+    }
+
+    setPassword("");
+    setConfirmPassword("");
+    setAccountMessage("Password updated.");
+  };
+
+  const sendPasswordReset = async () => {
+    if (!supabase || !email) return;
+
+    setIsSendingReset(true);
+    setAccountMessage("");
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: getAuthRedirectUrl(),
+    });
+    setIsSendingReset(false);
+
+    if (error) {
+      setAccountMessage(error.message);
+      return;
+    }
+
+    setAccountMessage("Password reset email sent.");
+  };
+
+  return (
+    <section className="account-status" aria-label="Account and sync status">
+      <div className="account-summary">
+        <div>
+          <span className={syncStatus === "error" ? "status-dot is-error" : "status-dot"} />
+          <strong>{statusLabel}</strong>
+          <small>{syncError || email || "Progress is saved on this device"}</small>
+        </div>
+        {session && (
+          <button
+            className="account-toggle"
+            type="button"
+            aria-expanded={isOpen}
+            onClick={() => {
+              setIsOpen((current) => !current);
+              setAccountMessage("");
+            }}
+          >
+            <UserCircle aria-hidden="true" size={15} />
+            <span>Account</span>
+          </button>
+        )}
+      </div>
+
+      {session && isOpen && (
+        <div className="account-panel">
+          <div className="account-panel-heading">
+            <div>
+              <p className="eyebrow">Signed in</p>
+              <h2>{email}</h2>
+            </div>
+            <Settings aria-hidden="true" size={20} />
+          </div>
+
+          <form className="account-password-form" onSubmit={handleAccountPasswordUpdate}>
+            <label>
+              <span>
+                <Lock aria-hidden="true" size={14} />
+                New password
+              </span>
+              <input
+                autoComplete="new-password"
+                minLength={minimumPasswordLength}
+                required
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </label>
+
+            <label>
+              <span>
+                <KeyRound aria-hidden="true" size={14} />
+                Confirm password
+              </span>
+              <input
+                autoComplete="new-password"
+                minLength={minimumPasswordLength}
+                required
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+              />
+            </label>
+
+            {accountMessage && <p className="auth-message">{accountMessage}</p>}
+
+            <button className="primary-action" type="submit" disabled={isUpdatingPassword}>
+              <ShieldCheck aria-hidden="true" size={17} />
+              {isUpdatingPassword ? "Updating..." : "Update password"}
+            </button>
+          </form>
+
+          <div className="account-panel-actions">
+            <button type="button" onClick={sendPasswordReset} disabled={isSendingReset}>
+              <KeyRound aria-hidden="true" size={15} />
+              <span>{isSendingReset ? "Sending..." : "Email reset link"}</span>
+            </button>
+            <button type="button" onClick={onSignOut}>
+              <LogOut aria-hidden="true" size={15} />
+              <span>Sign out</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -907,8 +1657,10 @@ function Dashboard({
             </div>
           </div>
           <p className="muted">
-            Attempts, bookmarks, and planner checks are saved separately for this learner in
-            this browser. {profileCount} learner {profileCount === 1 ? "profile is" : "profiles are"} available here.
+            {isSupabaseConfigured
+              ? "Attempts, bookmarks, and planner checks sync to Supabase for this learner."
+              : "Attempts, bookmarks, and planner checks are saved separately for this learner in this browser."}{" "}
+            {profileCount} learner {profileCount === 1 ? "profile is" : "profiles are"} available here.
           </p>
           <button className="danger-action" type="button" onClick={resetProgress}>
             <RotateCcw aria-hidden="true" size={17} />

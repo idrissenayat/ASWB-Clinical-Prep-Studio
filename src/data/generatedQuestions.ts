@@ -184,11 +184,18 @@ function contextualizeStem(stem: string, domain: DomainId, number: number) {
   const context = scenarioContext(domain, number);
 
   if (!promptMatch || typeof promptMatch.index !== "number") {
-    return stem.trim().endsWith("?") ? `${context} ${stem}` : `${stem} ${context}`;
+    return sentenceCase(stem.trim().endsWith("?") ? `${context} ${stem}` : `${stem} ${context}`);
   }
 
   const lead = stem.slice(0, promptMatch.index).trimEnd();
-  return lead ? `${lead} ${context} ${promptMatch[1]}` : `${context} ${promptMatch[1]}`;
+  const contextualizedStem = lead
+    ? `${lead} ${context} ${promptMatch[1]}`
+    : `${context} ${promptMatch[1]}`;
+  return sentenceCase(contextualizedStem);
+}
+
+function sentenceCase(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function pick<T>(items: T[], index: number, offset = 0) {
@@ -249,9 +256,9 @@ const ethicsTemplates: Template[] = [
       correct:
         "Decline to confirm or share information without valid authorization or another applicable exception",
       distractors: [
-        "Confirm attendance but avoid sharing the diagnosis",
-        "Share only the most helpful clinical details because the caller is concerned",
-        "Ask the caller to summarize the concern publicly in writing",
+        "Verify the caller's relationship and then confirm only whether services are active",
+        "Offer general reassurance that the client has support without discussing symptoms",
+        "Ask the caller to obtain a release before any details are discussed",
       ],
       rationale:
         "Confidentiality includes the fact that someone is a client. Disclosure requires proper authorization or a valid legal or safety exception.",
@@ -273,9 +280,9 @@ const ethicsTemplates: Template[] = [
       correct:
         "Explain the role, purpose of services, confidentiality limits, and how information may be used before proceeding",
       distractors: [
-        "Complete the full assessment before discussing limits so rapport is not disrupted",
-        "Promise complete privacy unless the client signs a release",
-        "Tell the client details can be discussed after treatment goals are written",
+        "Complete the intake and review confidentiality limits at the end of the first session",
+        "Give a general privacy handout and explain reporting duties only if they become relevant",
+        "Begin with treatment goals and return to documentation requirements after rapport is stronger",
       ],
       rationale:
         "Clients need informed consent and role clarity before sharing sensitive information, especially when there are reporting or evaluative conditions.",
@@ -301,9 +308,9 @@ const ethicsTemplates: Template[] = [
       correct:
         "Explore the meaning, discuss professional boundaries, consult if needed, and document the decision",
       distractors: [
-        "Accept immediately to avoid harming rapport",
-        "Refuse without discussion because every boundary issue has the same answer",
-        "End services because the client has crossed a boundary",
+        "Accept the request or gift once and process the boundary meaning in the next session",
+        "Apply a blanket refusal policy and document that the boundary was maintained",
+        "Refer the client solely because the request creates a possible dual relationship",
       ],
       rationale:
         "Boundary decisions should consider clinical meaning, culture, power, client welfare, consultation, and documentation.",
@@ -325,9 +332,9 @@ const ethicsTemplates: Template[] = [
       correct:
         "Follow mandated reporting or protective action requirements and address immediate safety needs",
       distractors: [
-        "Wait for proof before taking action",
-        "Ask the alleged victim to investigate and report back",
-        "Avoid reporting unless the client gives written permission",
+        "Consult after the session and delay action until the facts are independently verified",
+        "Encourage the client to make a voluntary report before deciding whether the worker must act",
+        "Preserve confidentiality unless the possible victim confirms the concern directly",
       ],
       rationale:
         "Mandated reporting and protective duties are triggered by reasonable suspicion or credible risk, not proof.",
@@ -352,9 +359,9 @@ const ethicsTemplates: Template[] = [
       correct:
         "Follow law and agency policy, disclose only what is authorized or required, and preserve record integrity",
       distractors: [
-        "Release the full record whenever another professional asks",
-        "Delete old notes to reduce risk",
-        "Let convenience determine what is shared",
+        "Provide a clinical summary before confirming the exact scope of the request",
+        "Withhold all information until the client authorizes disclosure, even if law requires action",
+        "Revise older notes so they better match the current understanding of the case",
       ],
       rationale:
         "Record handling requires legal-policy alignment, confidentiality, minimum necessary disclosure, and truthful documentation.",
@@ -376,9 +383,9 @@ const ethicsTemplates: Template[] = [
       correct:
         "Respect the refusal while exploring reasons, risks, alternatives, and supports",
       distractors: [
-        "End services because refusal means noncompliance",
-        "Ask family members to pressure the client",
-        "Override the decision because the worker's recommendation is clinically sound",
+        "Make continued services conditional on accepting the recommendation",
+        "Invite family members to explain the benefits before revisiting the client's choice",
+        "Document the refusal and avoid further discussion so the client does not feel pressured",
       ],
       rationale:
         "A capable client may refuse recommended services. The worker can explore concerns and alternatives without coercion.",
@@ -400,9 +407,9 @@ const ethicsTemplates: Template[] = [
       correct:
         "Seek supervision, consultation, training, or referral to ensure competent service",
       distractors: [
-        "Proceed independently because all clinical skills transfer equally",
-        "Refuse all contact with the client without transition planning",
-        "Ask the client to educate the worker about the specialty",
+        "Continue services while independently reading about the specialty between sessions",
+        "Transfer the client immediately without discussing continuity or interim risk",
+        "Let the client decide whether the worker's general experience is sufficient",
       ],
       rationale:
         "Ethical practice requires working within competence and protecting continuity through consultation, supervision, training, or referral.",
@@ -423,9 +430,9 @@ const ethicsTemplates: Template[] = [
       correct:
         "Protect clients, use appropriate supervisory or consultation channels, and escalate when risk is immediate",
       distractors: [
-        "Ignore the behavior because colleague issues are private",
-        "Warn clients directly before gathering any context",
-        "Post a concern anonymously so others can decide",
+        "Address it informally later to preserve the working relationship",
+        "Tell clients to reschedule without using supervisory or agency channels",
+        "Document personal impressions and wait for several more examples before acting",
       ],
       rationale:
         "Responsibilities to colleagues do not override client welfare. The level of urgency depends on immediacy of risk.",
@@ -446,9 +453,9 @@ const ethicsTemplates: Template[] = [
       correct:
         "Address privacy, consent, location, emergency planning, and applicable policy before continuing",
       distractors: [
-        "Continue as usual because technology does not change clinical duties",
-        "Stop all services permanently whenever technology creates a question",
-        "Ask the client to decide which legal rules apply",
+        "Continue after reminding the client to find as much privacy as possible",
+        "Document the technology concern after the session and keep the usual treatment plan",
+        "Ask the client whether they believe location or emergency planning rules apply",
       ],
       rationale:
         "Technology practice requires attention to confidentiality, consent, jurisdiction, emergency response, and agency policy.",
@@ -470,9 +477,9 @@ const ethicsTemplates: Template[] = [
       correct:
         "Review progress, plan next supports, provide referrals when needed, and document continuity steps",
       distractors: [
-        "End abruptly to promote independence",
-        "Avoid discussing termination because it may upset the client",
-        "Transfer the client without explanation",
+        "Provide referral information but postpone discussion of progress and reactions",
+        "Give the client a final date and close the case after the last scheduled session",
+        "Complete the transfer administratively and let the next provider explain the change",
       ],
       rationale:
         "Ethical termination is planned, clinically responsive, documented, and oriented toward continuity of care.",
@@ -494,9 +501,9 @@ const ethicsTemplates: Template[] = [
       correct:
         "Explore the client's meaning, identify barriers and bias, and support access using culturally responsive and anti-oppressive practice",
       distractors: [
-        "Redirect to symptoms only because social context is outside clinical practice",
-        "Assume the client is misinterpreting the situation until others confirm it",
-        "Use the same intervention plan regardless of identity or access concerns",
+        "Assess symptoms first and return to access concerns after diagnosis is clarified",
+        "Validate the concern but use the standard plan until the client requests accommodations",
+        "Refer to a specialized provider before exploring what support the client wants",
       ],
       rationale:
         "Diversity and social justice questions require attention to meaning, access, power, bias, and culturally responsive service delivery.",
@@ -518,9 +525,9 @@ const ethicsTemplates: Template[] = [
       correct:
         "Collaborate with the client to remove access barriers and arrange appropriate supports or accommodations",
       distractors: [
-        "Ask the client to adapt to the agency's usual process",
-        "Delay services until the client can participate without accommodation",
-        "Have a family member handle all communication for convenience",
+        "Offer the standard service and note the barrier for later treatment planning",
+        "Ask the client to bring someone they trust to help them participate",
+        "Delay nonurgent clinical work until accommodations are independently arranged",
       ],
       rationale:
         "Ethical and equitable practice includes reasonable access supports that protect privacy, dignity, and meaningful participation.",
@@ -541,9 +548,9 @@ const ethicsTemplates: Template[] = [
       correct:
         "Informed consent",
       distractors: [
-        "Countertransference",
-        "Case consultation",
-        "Discharge planning",
+        "Authorization for release of information",
+        "Treatment contracting",
+        "General agency orientation",
       ],
       rationale:
         "Informed consent means the client understands the service, expected use of information, limits of confidentiality, risks, benefits, alternatives, and rights.",
@@ -564,9 +571,9 @@ const ethicsTemplates: Template[] = [
       correct:
         "Using supervision, consultation, self-care, and professional development to protect competent practice",
       distractors: [
-        "Avoiding all clients with trauma histories",
-        "Disclosing personal trauma details to clients to normalize the reaction",
-        "Continuing without support because the reaction is private",
+        "Using personal therapy alone without considering client-service impact",
+        "Discussing the concern only after a formal performance problem is identified",
+        "Reducing the caseload without consultation or continuity planning",
       ],
       rationale:
         "Burnout, secondary trauma, and compassion fatigue can affect competent service, so the worker should use support, self-care, and professional development.",
@@ -591,9 +598,9 @@ const assessmentTemplates: Template[] = [
       correct:
         "Intent, plan, access to means, immediacy, past behavior, protective factors, and supports",
       distractors: [
-        "Long-term childhood themes before discussing safety",
-        "Whether the client can complete homework before the next session",
-        "Only the client's diagnosis",
+        "Recent triggers, coping history, and family patterns before asking directly about means",
+        "Current diagnosis, medication adherence, and therapy attendance before asking about intent",
+        "Available supports and treatment goals before clarifying the level of immediate danger",
       ],
       rationale:
         "Ambiguous or direct risk statements require structured assessment of seriousness, immediacy, means, history, and protection.",
@@ -615,9 +622,9 @@ const assessmentTemplates: Template[] = [
       correct:
         "Assess biological, psychological, social, cultural, spiritual, risk, and strength factors",
       distractors: [
-        "Focus only on symptoms to avoid overwhelming the client",
-        "Delay assessment until every external problem is solved",
-        "Assess only the strongest support because strengths matter most",
+        "Prioritize symptoms and medical history first, then add social context if treatment stalls",
+        "Focus on environmental stressors because they appear to explain most symptoms",
+        "Use the reliable support as the main collateral source before broadening the interview",
       ],
       rationale:
         "A biopsychosocial assessment integrates needs, context, culture, risk, and protective factors.",
@@ -644,9 +651,9 @@ const assessmentTemplates: Template[] = [
       correct:
         "The interaction among individual functioning, relationships, environment, resources, and systems affecting the client",
       distractors: [
-        "Only individual symptoms because systems factors are not part of clinical assessment",
-        "Only agency eligibility rules before understanding the client's situation",
-        "Whether the client can solve the environmental stressor without support",
+        "Primary symptom severity first, with systems factors added during treatment planning",
+        "Agency eligibility and resource availability before exploring the client's functioning",
+        "Which environmental stressor the client wants solved before assessing relational patterns",
       ],
       rationale:
         "Person-in-environment assessment considers how individual, relational, community, and institutional factors shape functioning and needs.",
@@ -668,9 +675,9 @@ const assessmentTemplates: Template[] = [
       correct:
         "Assess relationship patterns, roles, supports, stressors, safety, and the client's functioning in context",
       distractors: [
-        "Ignore relationship patterns unless the client requests family therapy",
-        "Assume the most vocal family member has the most accurate view",
-        "Focus only on diagnosis before asking about the client's environment",
+        "Assess current symptom severity before asking about family or social roles",
+        "Use the most involved family member as the primary source of context",
+        "Consider family involvement after a diagnosis and treatment modality are selected",
       ],
       rationale:
         "Family and social environment dynamics are part of assessing client functioning, stress, supports, and risk.",
@@ -696,9 +703,9 @@ const assessmentTemplates: Template[] = [
       correct:
         "Assess safety and arrange appropriate medical or prescribing-provider evaluation",
       distractors: [
-        "Begin insight-oriented therapy immediately",
-        "Assume the symptom is attention-seeking",
-        "Wait several sessions to see whether the symptom resolves",
+        "Complete a mental status exam and schedule routine therapy follow-up",
+        "Explore psychosocial meaning while monitoring whether the symptom improves",
+        "Document the symptom and suggest medical contact if it becomes more severe",
       ],
       rationale:
         "Sudden cognitive, neurologic, medication-related, or withdrawal symptoms may require medical evaluation.",
@@ -720,9 +727,9 @@ const assessmentTemplates: Template[] = [
       correct:
         "Consider developmental stage, context, culture, safety, supports, and functioning",
       distractors: [
-        "Assume the behavior has the same meaning at every age",
-        "Focus only on the caregiver's explanation",
-        "Skip developmental context and move directly to diagnosis",
+        "Compare the behavior with age expectations before assessing culture or safety",
+        "Use the caregiver's explanation as the main developmental context",
+        "Choose a diagnosis from the age-based symptom pattern before assessing functioning",
       ],
       rationale:
         "Developmental meaning depends on age, context, functioning, culture, and safety.",
@@ -744,9 +751,9 @@ const assessmentTemplates: Template[] = [
       correct:
         "The client's meaning, identity context, discrimination stressors, supports, coping, and safety",
       distractors: [
-        "Whether the client is overreacting to ordinary stress",
-        "Only symptoms that fit a diagnosis",
-        "Whether the client can avoid discussing identity in therapy",
+        "Symptom frequency and severity before exploring identity or discrimination context",
+        "Coping and supports while treating discrimination concerns as a referral issue",
+        "Diagnostic criteria first so cultural meaning does not overly shape the assessment",
       ],
       rationale:
         "Culturally responsive assessment includes meaning, identity, oppression, coping, and environmental context.",
@@ -768,9 +775,9 @@ const assessmentTemplates: Template[] = [
       correct:
         "Withdrawal risk, safety, supports, functioning, prior treatment response, and appropriate level of care",
       distractors: [
-        "Whether the client can promise perfect attendance",
-        "Only the client's motivation to stop",
-        "Whether therapy should end because relapse occurred",
+        "Motivation for abstinence and willingness to attend weekly outpatient therapy",
+        "Relapse triggers and coping skills before considering medical or environmental risk",
+        "Attendance history and treatment compliance as the main level-of-care indicators",
       ],
       rationale:
         "Substance use assessment considers safety, medical risk, environment, supports, and level of care needs.",
@@ -792,9 +799,9 @@ const assessmentTemplates: Template[] = [
       correct:
         "With proper consent, integrate relevant collateral information with interview, observation, and context",
       distractors: [
-        "Assume the client is lying",
-        "Accept collateral information as automatically more accurate",
-        "Ignore collateral data because it is not clinical",
+        "Use the collateral report to challenge inconsistencies after consent is obtained",
+        "Prioritize the collateral source because it may be more objective than self-report",
+        "Wait to compare reports until treatment goals have been completed",
       ],
       rationale:
         "Collateral data can clarify assessment but must be obtained and interpreted ethically and contextually.",
@@ -819,9 +826,9 @@ const assessmentTemplates: Template[] = [
       correct:
         "Readiness, ambivalence, external pressure, goals, barriers, and possible change supports",
       distractors: [
-        "Whether the client should be discharged for resistance",
-        "Whether the client can be forced to develop insight",
-        "Only the presenting diagnosis",
+        "The referral source's compliance expectations before exploring client-defined goals",
+        "Specific action steps that will increase accountability before assessing ambivalence",
+        "The presenting diagnosis and symptom severity before discussing readiness",
       ],
       rationale:
         "Statements of ambivalence or external pressure should lead to assessment of readiness and engagement factors.",
@@ -846,9 +853,9 @@ const assessmentTemplates: Template[] = [
       correct:
         "Immediate safety, coercion, exploitation, supports, reporting duties, and safe communication",
       distractors: [
-        "Whether the client caused the situation",
-        "Couples communication skills before safety",
-        "Long-term insight before basic protection",
+        "Relationship history and communication patterns before asking about safe contact",
+        "The client's preferred long-term goals before assessing coercion or immediate risk",
+        "Family mediation options before determining whether protective action is required",
       ],
       rationale:
         "Control, threats, withholding resources, and exploitation require safety-focused assessment and possible reporting.",
@@ -869,9 +876,9 @@ const assessmentTemplates: Template[] = [
       correct:
         "Integrate it with history, risk, functioning, medical factors, and client context",
       distractors: [
-        "Treat it as a complete diagnosis by itself",
-        "Ignore it because only psychiatrists use mental status findings",
-        "Share it with family without consent",
+        "Use it to form a provisional diagnosis before reviewing history or risk",
+        "Treat it as objective data but defer safety assessment until later in treatment",
+        "Share it with collateral contacts if it may help explain the client's behavior",
       ],
       rationale:
         "Mental status findings are important assessment data but must be interpreted with broader clinical context.",
@@ -893,9 +900,9 @@ const assessmentTemplates: Template[] = [
       correct:
         "Identify client goals, strengths, barriers, resource needs, level of care, and culturally appropriate intervention options",
       distractors: [
-        "Choose a treatment modality before assessing the client's context",
-        "Write goals based only on the agency's available groups",
-        "Focus on barriers only after the client misses several more appointments",
+        "Select a likely modality from the presenting goal, then address resources later",
+        "Write measurable goals from the agency's available services and revise if needed",
+        "Focus on practical barriers during discharge planning if attendance declines",
       ],
       rationale:
         "Assessment practices connect assessed needs and strengths to service planning, resources, treatment modality selection, and level of care.",
@@ -916,9 +923,9 @@ const assessmentTemplates: Template[] = [
       correct:
         "Biopsychosocial person-in-environment assessment",
       distractors: [
-        "Single-symptom screening only",
-        "Provider-centered treatment selection",
-        "Discharge planning without assessment",
+        "Problem-focused symptom inventory",
+        "Resource eligibility screening",
+        "Clinical treatment contracting",
       ],
       rationale:
         "Biopsychosocial and person-in-environment assessment integrates individual functioning with relationships, culture, resources, and environmental conditions.",
@@ -939,9 +946,9 @@ const assessmentTemplates: Template[] = [
       correct:
         "Current clinical observation that must be interpreted with history, risk, and context",
       distractors: [
-        "A complete diagnosis by itself",
-        "Collateral information that replaces the client's report",
-        "A treatment plan that does not require further assessment",
+        "A diagnostic conclusion that determines the initial treatment plan",
+        "Collateral data that is more reliable than the client's report",
+        "A stable trait that should be interpreted apart from the current context",
       ],
       rationale:
         "Mental status findings document current observations and should be integrated with broader assessment data.",
@@ -966,9 +973,9 @@ const interventionTemplates: Template[] = [
       correct:
         "Use empathy, acceptance, strengths-based engagement, and collaborative problem definition",
       distractors: [
-        "Move directly to advice so the session feels productive",
-        "Challenge the client for not trusting services",
-        "Choose the intervention before understanding the client's goals",
+        "Normalize the concern and offer a practical technique before exploring goals",
+        "Clarify agency expectations first and return to mistrust once the role is established",
+        "Select an intervention from the referral concern and refine goals after rapport improves",
       ],
       rationale:
         "Practice concepts include building and maintaining the helping relationship, using strengths-based engagement, and collaborating in problem solving.",
@@ -990,9 +997,9 @@ const interventionTemplates: Template[] = [
       correct:
         "Address immediate safety, stabilization, grounding, basic needs, and short-term supports",
       distractors: [
-        "Ask for a detailed trauma narrative before stabilization",
-        "Begin long-term interpretation of family patterns",
-        "Focus on discharge before assessing current safety",
+        "Begin a brief incident narrative to understand the trauma exposure before grounding",
+        "Identify long-term treatment goals once the client can describe the event coherently",
+        "Arrange referral and discharge resources after documenting the presenting crisis",
       ],
       rationale:
         "Crisis intervention starts with safety, stabilization, immediate needs, and support.",
@@ -1001,7 +1008,11 @@ const interventionTemplates: Template[] = [
     };
   },
   (index) => {
-    const concern = pick(concerns, index, 2);
+    const changeTarget = pick(
+      ["drinking", "cannabis use", "missing appointments", "avoiding family conversations", "angry outbursts", "gambling", "isolating from supports"],
+      index,
+      2,
+    );
     return {
       area: "IIIB",
       area2026: "IIIB",
@@ -1009,13 +1020,13 @@ const interventionTemplates: Template[] = [
       skill: "application",
       difficulty: "applied",
       tags: ["motivational interviewing", "ambivalence", "engagement"],
-      stem: `A client says, "Part of me wants to change ${concern}, but part of me does not want to give it up." Which response BEST fits motivational interviewing?`,
+      stem: `A client says, "Part of me wants to change ${changeTarget}, but part of me does not want to give it up." Which response BEST fits motivational interviewing?`,
       correct:
         "You are pulled in two directions: one part sees reasons to change, and another part is not ready",
       distractors: [
-        "You need to decide today or treatment cannot work",
-        "The part that does not want change is the unhealthy part",
-        "Let me explain why change is the only reasonable choice",
+        "You already know change is needed, so let's focus on the reasons to stop",
+        "What would convince the part that does not want change to choose a healthier option?",
+        "It sounds like the next step is choosing a plan that keeps you accountable",
       ],
       rationale:
         "MI reflects ambivalence, supports autonomy, and avoids arguing for change prematurely.",
@@ -1040,9 +1051,9 @@ const interventionTemplates: Template[] = [
       correct:
         "Examine evidence for and against the thought and develop a balanced alternative",
       distractors: [
-        "Tell the client the thought is irrational and should stop immediately",
-        "Avoid discussing thoughts and focus only on childhood history",
-        "Insist the thought is accurate until proven otherwise",
+        "Identify the early experience that first created the thought",
+        "Practice thought-stopping whenever the thought appears",
+        "Provide reassurance that the feared outcome is unlikely",
       ],
       rationale:
         "CBT works with links among thoughts, feelings, behaviors, evidence, and skill practice.",
@@ -1063,9 +1074,9 @@ const interventionTemplates: Template[] = [
       correct:
         "Stabilization, coping skills, grounding, safety, and readiness before intensive processing",
       distractors: [
-        "Begin exposure immediately because the client requested it",
-        "Avoid all trauma treatment permanently",
-        "Challenge the client for resisting treatment",
+        "Honor the client's request by beginning processing while adding grounding afterward",
+        "Shift to psychoeducation only until trauma symptoms are no longer present",
+        "Use cognitive restructuring to challenge trauma beliefs before stabilization",
       ],
       rationale:
         "Trauma-informed sequencing addresses safety and stabilization before intensive processing when symptoms overwhelm capacity.",
@@ -1086,9 +1097,9 @@ const interventionTemplates: Template[] = [
       correct:
         "Structure the process, validate concerns, reinforce expectations, and invite balanced participation",
       distractors: [
-        "Let the process continue without intervention",
-        "Side with the most distressed person immediately",
-        "End the service because conflict occurred",
+        "Move quickly to solving the content issue so group tension decreases",
+        "Meet with the most distressed participant later and let the group continue",
+        "Review group rules privately after session without addressing the current process",
       ],
       rationale:
         "Group and family work requires active management of safety, participation, norms, and communication.",
@@ -1109,9 +1120,9 @@ const interventionTemplates: Template[] = [
       correct:
         "Explore barriers and coordinate practical resources, referrals, follow-up, or service alternatives",
       distractors: [
-        "Label the behavior as resistance without further exploration",
-        "Close the case for noncompliance immediately",
-        "Ignore concrete needs because therapy should focus only on feelings",
+        "Review attendance expectations and ask the client to recommit to treatment",
+        "Explore motivation for treatment before addressing concrete access barriers",
+        "Refer to a separate case manager without coordinating follow-up",
       ],
       rationale:
         "Social work intervention includes addressing access barriers that interfere with care and functioning.",
@@ -1133,9 +1144,9 @@ const interventionTemplates: Template[] = [
       correct:
         "Develop a concrete plan with warning signs, coping steps, supports, emergency resources, and follow-up",
       distractors: [
-        "Offer vague reassurance that the client will be fine",
-        "Avoid discussing risk because it may increase distress",
-        "Rely only on a promise that the client will not act",
+        "Review coping skills generally and schedule an earlier follow-up appointment",
+        "Ask the client to contact a crisis line if urges increase and continue the session agenda",
+        "Document denial of current intent and revisit the topic if risk escalates",
       ],
       rationale:
         "Safety planning is collaborative, specific, practical, and linked to supports and follow-up.",
@@ -1156,9 +1167,9 @@ const interventionTemplates: Template[] = [
       correct:
         "Review progress with the client, update the plan, and address termination or referrals when appropriate",
       distractors: [
-        "Continue the same plan without discussion",
-        "End services abruptly",
-        "Avoid outcome review because it can feel judgmental",
+        "Continue the current plan until the next scheduled formal treatment review",
+        "Use outcome information internally before discussing any changes with the client",
+        "Prepare termination or referral only after several additional sessions confirm the pattern",
       ],
       rationale:
         "Ongoing evaluation uses client feedback and outcomes to adjust treatment, plan transition, or consolidate gains.",
@@ -1179,9 +1190,9 @@ const interventionTemplates: Template[] = [
       correct:
         "Compare outcomes with program objectives, assess data quality, and identify practice or service changes to evaluate",
       distractors: [
-        "Ignore the data because individual clinical judgment is enough",
-        "Assume the program is effective without reviewing outcomes",
-        "Change every service immediately before clarifying what the data mean",
+        "Compare the finding with staff impressions before deciding whether procedures matter",
+        "Use the finding to select a new service model and evaluate it after implementation",
+        "Report the metric as success or failure before reviewing data quality and objectives",
       ],
       rationale:
         "Practice evaluation uses outcomes, program objectives, data quality, and service impact to guide improvement.",
@@ -1202,9 +1213,9 @@ const interventionTemplates: Template[] = [
       correct:
         "Collaboratively teach, rehearse, tailor, and review the skill in the client's real-life context",
       distractors: [
-        "Assign the skill without explanation or review",
-        "Avoid skills because insight is always the first intervention",
-        "Tell the client to master the skill before returning",
+        "Explain the skill and ask the client to try it independently before the next session",
+        "Provide written instructions and review the skill only if the client reports difficulty",
+        "Choose the skill that works best for similar clients and assign it as homework",
       ],
       rationale:
         "Skills interventions work best when taught, practiced, tailored, and reviewed collaboratively.",
@@ -1225,9 +1236,9 @@ const interventionTemplates: Template[] = [
       correct:
         "Clarify client goals, obtain consent, coordinate with relevant systems, and support client advocacy",
       distractors: [
-        "Take over all decisions because systems are difficult",
-        "Avoid systems work because it is not clinical",
-        "Contact every agency involved without consent",
+        "Contact the system to explain professional recommendations before obtaining consent",
+        "Coach the client to navigate the system independently before considering coordination",
+        "Focus on clinical symptoms first and return to systems after functioning improves",
       ],
       rationale:
         "Systems intervention includes consent, coordination, advocacy, and support for client self-determination.",
@@ -1248,9 +1259,9 @@ const interventionTemplates: Template[] = [
       correct:
         "Use supervision or consultation to clarify risk, learning needs, ethical duties, and next practice steps",
       distractors: [
-        "Avoid discussing the concern because supervision is only administrative",
-        "Continue the same approach without reflection",
-        "Shift responsibility to the client for the worker's uncertainty",
+        "Document the concern and continue the current approach while monitoring impact",
+        "Use supervision to discuss learning needs but keep risk decisions unchanged",
+        "Ask the supervisor to take over the case without clinician reflection or planning",
       ],
       rationale:
         "Supervision and consultation support ethical practice, client welfare, self-assessment, and appropriate decision-making.",
@@ -1271,9 +1282,9 @@ const interventionTemplates: Template[] = [
       correct:
         "Review policy, clarify procedures, train staff, monitor implementation, and evaluate whether risk decreases",
       distractors: [
-        "Handle each incident informally without changing agency practice",
-        "Ask clients to manage the system problem themselves",
-        "Wait for a complaint before addressing the pattern",
+        "Remind staff of the existing policy and handle future incidents individually",
+        "Create a new policy before reviewing causes or implementation barriers",
+        "Document the pattern and wait for the quality committee's next scheduled review",
       ],
       rationale:
         "Administrative practice includes policy development, risk reduction, staff training, implementation, and evaluation.",
@@ -1294,9 +1305,9 @@ const interventionTemplates: Template[] = [
       correct:
         "Harm reduction",
       distractors: [
-        "Confrontation as the first response",
-        "Unplanned termination",
-        "Insight-oriented interpretation only",
+        "Motivational interviewing",
+        "Relapse prevention planning",
+        "Substance-use psychoeducation",
       ],
       rationale:
         "Harm reduction focuses on decreasing risk and increasing safety while respecting client autonomy and readiness.",
@@ -1317,9 +1328,9 @@ const interventionTemplates: Template[] = [
       correct:
         "Termination",
       distractors: [
-        "Initial intake",
-        "Crisis triage",
-        "Collateral verification",
+        "Evaluation",
+        "Follow-up",
+        "Engagement",
       ],
       rationale:
         "Planned termination includes reviewing goals, consolidating progress, arranging follow-up, and preparing for continuity.",

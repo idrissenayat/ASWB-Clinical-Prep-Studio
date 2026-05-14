@@ -112,7 +112,37 @@ function parseAccess(value: unknown) {
   };
 }
 
-function serializeQuestion(row: Record<string, unknown>) {
+function hashText(value: string) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+}
+
+function shapeOptionsForModel(row: Record<string, unknown>, examModel: ExamModel) {
+  const options = Array.isArray(row.options) ? [...row.options] : [];
+  const answerIndex = Number(row.answer_index);
+
+  if (examModel !== "2026" || options.length !== 4 || hashText(String(row.id)) % 100 >= 65) {
+    return { options, answerIndex };
+  }
+
+  const removableWrongIndexes = options
+    .map((_, index) => index)
+    .filter((index) => index !== answerIndex);
+  const removeIndex = removableWrongIndexes[hashText(`${row.id}:remove`) % removableWrongIndexes.length];
+  const shapedOptions = options.filter((_, index) => index !== removeIndex);
+
+  return {
+    options: shapedOptions,
+    answerIndex: removeIndex < answerIndex ? answerIndex - 1 : answerIndex,
+  };
+}
+
+function serializeQuestion(row: Record<string, unknown>, examModel: ExamModel) {
+  const shaped = shapeOptionsForModel(row, examModel);
+
   return {
     id: row.id,
     domain: row.domain,
@@ -123,8 +153,8 @@ function serializeQuestion(row: Record<string, unknown>) {
     difficulty: row.difficulty,
     tags: row.tags ?? [],
     stem: row.stem,
-    options: row.options ?? [],
-    answerIndex: row.answer_index,
+    options: shaped.options,
+    answerIndex: shaped.answerIndex,
     rationale: row.rationale,
     examLens: row.exam_lens,
   };
@@ -262,7 +292,7 @@ serve(async (req) => {
 
   const questions = shuffle(rows)
     .slice(0, Math.min(requestedCount, rows.length))
-    .map((row) => serializeQuestion(row as Record<string, unknown>));
+    .map((row) => serializeQuestion(row as Record<string, unknown>, examModel));
 
   return jsonResponse(req, { questions, availableCount, access });
 });

@@ -156,12 +156,29 @@ try {
   const bySkill = {};
   const byDifficulty = {};
   const optionCounts = {};
+  let stemWordTotal = 0;
+  let rationaleWordTotal = 0;
+  let shortRationales = 0;
+  let shortScenarioStems = 0;
+  let weakDistractorItems = 0;
+  const weakDistractorPattern =
+    /\b(ignore|do nothing|never|always|avoid the topic|wait until harm occurs|tell the client what to do)\b/i;
 
   if (questions.length !== questionBankTotal) {
     issues.push(`total: expected ${questionBankTotal}, got ${questions.length}`);
   }
 
   for (const question of questions) {
+    const stemWords = String(question.stem ?? "").split(/\s+/).filter(Boolean).length;
+    const rationaleWords = String(question.rationale ?? "").split(/\s+/).filter(Boolean).length;
+    stemWordTotal += stemWords;
+    rationaleWordTotal += rationaleWords;
+    if (stemWords < 32) shortScenarioStems += 1;
+    if (rationaleWords < 45) shortRationales += 1;
+    if ((question.options ?? []).some((option) => weakDistractorPattern.test(String(option)))) {
+      weakDistractorItems += 1;
+    }
+
     byDomain[question.domain] = (byDomain[question.domain] ?? 0) + 1;
     byArea2026[question.area2026] = (byArea2026[question.area2026] ?? 0) + 1;
     byAreaPre2026[question.area] = (byAreaPre2026[question.area] ?? 0) + 1;
@@ -230,6 +247,30 @@ try {
   compareCounts("freeByArea2026", freeByArea2026, freeQuestionCountsByArea["2026"], issues);
   compareCounts("freeByAreaPre2026", freeByAreaPre2026, freeQuestionCountsByArea.pre2026, issues);
 
+  const quality = {
+    avgStemWords: Math.round(stemWordTotal / Math.max(1, questions.length)),
+    avgRationaleWords: Math.round(rationaleWordTotal / Math.max(1, questions.length)),
+    shortScenarioStems,
+    shortRationales,
+    weakDistractorItems,
+  };
+
+  if (quality.avgStemWords < 35) {
+    issues.push(`quality.avgStemWords: expected at least 35, got ${quality.avgStemWords}`);
+  }
+  if (quality.avgRationaleWords < 45) {
+    issues.push(`quality.avgRationaleWords: expected at least 45, got ${quality.avgRationaleWords}`);
+  }
+  if (shortRationales > 0) {
+    issues.push(`quality.shortRationales: expected 0, got ${shortRationales}`);
+  }
+  if ((byDifficulty.foundation ?? 0) > Math.round(questionBankTotal * 0.1)) {
+    issues.push(`quality.foundation: expected <= 10%, got ${byDifficulty.foundation ?? 0}`);
+  }
+  if ((bySkill.recall ?? 0) > Math.round(questionBankTotal * 0.15)) {
+    issues.push(`quality.recall: expected <= 15%, got ${bySkill.recall ?? 0}`);
+  }
+
   const report = {
     total: questions.length,
     examModels,
@@ -241,6 +282,7 @@ try {
     bySkill,
     byDifficulty,
     optionCounts,
+    quality,
     issueCount: issues.length,
     issues,
   };

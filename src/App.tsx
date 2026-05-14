@@ -698,7 +698,7 @@ function App() {
           </div>
           <div>
             <p className="eyebrow">Independent ASWB Clinical prep</p>
-            <h1>ASWB Clinical Prep Studio</h1>
+            <h1>ASWB Clinical Exam Prep</h1>
           </div>
         </div>
 
@@ -785,7 +785,7 @@ function AuthSetupScreen() {
             <Lock className="brand-book" size={16} />
           </div>
           <div>
-            <p className="eyebrow">ASWB Clinical Prep Studio</p>
+            <p className="eyebrow">ASWB Clinical Exam Prep</p>
             <h1>Sign in to continue</h1>
           </div>
         </div>
@@ -897,7 +897,7 @@ function AuthScreen() {
             <BookHeart className="brand-book" size={16} />
           </div>
           <div>
-            <p className="eyebrow">ASWB Clinical Prep Studio</p>
+            <p className="eyebrow">ASWB Clinical Exam Prep</p>
             <h1>
               {mode === "sign-in"
                 ? "Sign in to keep progress synced"

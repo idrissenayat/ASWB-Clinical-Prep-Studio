@@ -1,4 +1,4 @@
-# ASWB Clinical Prep Studio
+# ASWB Clinical Exam Prep
 
 A local React/Vite study app for students preparing for the ASWB Clinical Social Work Licensing Examination.
 

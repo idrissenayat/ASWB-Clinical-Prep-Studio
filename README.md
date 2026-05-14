@@ -25,6 +25,12 @@ VITE_SUPABASE_URL=https://your-project-ref.supabase.co
 VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 ```
 
+For public deployments that should require sign-in before showing the app, also set:
+
+```bash
+VITE_REQUIRE_AUTH=true
+```
+
 Then run the SQL migration in `supabase/migrations/202605140001_create_learner_profiles.sql`
 from the Supabase SQL editor or Supabase CLI. The migration creates a `learner_profiles`
 table with Row Level Security so each authenticated user can only access their own learner

@@ -46,7 +46,7 @@ import {
   planTasks,
   questions,
 } from "./data/exam";
-import { isSupabaseConfigured, supabase } from "./lib/supabase";
+import { isAccountAccessRequired, isSupabaseConfigured, supabase } from "./lib/supabase";
 
 type View = "dashboard" | "practice" | "simulation" | "flashcards" | "planner";
 type AreaFilter = ExamAreaId | "all";
@@ -717,6 +717,10 @@ function App() {
     setPasswordRecoveryActive(false);
   };
 
+  if (isAccountAccessRequired && !isSupabaseConfigured) {
+    return <AuthSetupScreen />;
+  }
+
   if (isSupabaseConfigured && !authReady) {
     return <LoadingScreen />;
   }
@@ -825,6 +829,58 @@ function LoadingScreen() {
         <p className="eyebrow">Connecting backend</p>
         <h1>Loading your study profile</h1>
         <p className="muted">Preparing Supabase Auth and saved learner progress.</p>
+      </section>
+    </main>
+  );
+}
+
+function AuthSetupScreen() {
+  return (
+    <main className="auth-shell">
+      <section className="auth-card">
+        <div className="auth-brand">
+          <div className="brand-mark" aria-hidden="true">
+            <ShieldCheck className="brand-care" size={27} />
+            <Lock className="brand-book" size={16} />
+          </div>
+          <div>
+            <p className="eyebrow">ASWB Clinical Prep Studio</p>
+            <h1>Sign in to continue</h1>
+          </div>
+        </div>
+
+        <p className="muted">
+          Account access is required for this public app. The sign-in backend still needs
+          the Supabase project URL and anon key before students can create accounts.
+        </p>
+
+        <div className="auth-form" aria-label="Account access pending configuration">
+          <label>
+            <span>
+              <Mail aria-hidden="true" size={15} />
+              Email
+            </span>
+            <input disabled placeholder="student@example.com" type="email" />
+          </label>
+
+          <label>
+            <span>
+              <Lock aria-hidden="true" size={15} />
+              Password
+            </span>
+            <input disabled placeholder="Password" type="password" />
+          </label>
+
+          <p className="auth-message">
+            Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as GitHub repository
+            secrets, then rerun the Pages deployment.
+          </p>
+
+          <button className="primary-action" type="button" disabled>
+            <Cloud aria-hidden="true" size={18} />
+            Sign in
+          </button>
+        </div>
       </section>
     </main>
   );

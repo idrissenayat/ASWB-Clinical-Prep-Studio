@@ -47,7 +47,6 @@ import {
 import {
   isAccountAccessRequired,
   isSupabaseConfigured,
-  stripePaymentLink,
   supabase,
 } from "./lib/supabase";
 
@@ -92,18 +91,13 @@ interface LearnerProfileRow {
   progress: unknown;
 }
 
-interface AccountEntitlementRow {
-  user_id: string;
-  plan: AccessPlan;
-  status: string;
-  free_questions_used: number;
-  current_period_end: string | null;
-}
-
 interface AccessState {
   plan: AccessPlan;
   status: string;
   periodEnd: string | null;
+  daysRemaining: number;
+  expiresSoon: boolean;
+  isExpired: boolean;
   isLoading: boolean;
   error: string;
   hasFullAccess: boolean;
@@ -130,7 +124,9 @@ const progressStorageKey = "aswb-clinical-prep-progress-v1";
 const profileStorageKey = "aswb-clinical-prep-user-profiles-v1";
 const activeProfileStorageKey = "aswb-clinical-prep-active-profile-v1";
 const minimumPasswordLength = 8;
-const freeQuestionLimit = 25;
+const freeQuestionLimit = 75;
+const paidAccessDays = 180;
+const accessPriceLabel = "$49";
 
 const navItems: Array<{ id: View; label: string; icon: typeof BarChart3 }> = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
@@ -158,6 +154,12 @@ const examAreaCounts = new Map(
     ] as const),
   ),
 );
+
+const freeSampleQuestions = domains
+  .flatMap((domain) =>
+    questions.filter((question) => question.domain === domain.id).slice(0, freeQuestionLimit / domains.length),
+  )
+  .slice(0, freeQuestionLimit);
 
 function shuffle<T>(items: T[]) {
   return [...items].sort(() => Math.random() - 0.5);
@@ -273,20 +275,60 @@ function ensureProfileStateHasActiveProfile(profiles: UserProfile[]): ProfileSta
   };
 }
 
-function hasPaidAccess(plan: AccessPlan, status: string) {
-  return plan === "paid" && ["active", "trialing", "lifetime"].includes(status);
-}
+function parseAccessResult(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return {
+      plan: "free" as AccessPlan,
+      status: "active",
+      freeQuestionsUsed: 0,
+      freeLimit: freeQuestionLimit,
+      currentPeriodEnd: null,
+      hasFullAccess: false,
+      daysRemaining: 0,
+      expiresSoon: false,
+      isExpired: false,
+    };
+  }
 
-function normalizeEntitlement(row: AccountEntitlementRow | null): Pick<
-  AccountEntitlementRow,
-  "plan" | "status" | "free_questions_used" | "current_period_end"
-> {
+  const result = value as {
+    plan?: unknown;
+    status?: unknown;
+    freeQuestionsUsed?: unknown;
+    free_questions_used?: unknown;
+    freeLimit?: unknown;
+    free_limit?: unknown;
+    currentPeriodEnd?: unknown;
+    current_period_end?: unknown;
+    hasFullAccess?: unknown;
+    has_full_access?: unknown;
+    daysRemaining?: unknown;
+    days_remaining?: unknown;
+    expiresSoon?: unknown;
+    expires_soon?: unknown;
+    isExpired?: unknown;
+    is_expired?: unknown;
+  };
+  const plan: AccessPlan = result.plan === "paid" ? "paid" : "free";
+  const freeQuestionsUsed = Number(result.freeQuestionsUsed ?? result.free_questions_used);
+  const parsedFreeLimit = Number(result.freeLimit ?? result.free_limit);
+  const daysRemaining = Number(result.daysRemaining ?? result.days_remaining);
+  const hasFullAccess = (result.hasFullAccess ?? result.has_full_access) === true;
+  const currentPeriodEnd = result.currentPeriodEnd ?? result.current_period_end;
+
   return {
-    plan: row?.plan === "paid" ? "paid" : "free",
-    status: row?.status || "active",
-    free_questions_used:
-      typeof row?.free_questions_used === "number" ? row.free_questions_used : 0,
-    current_period_end: row?.current_period_end ?? null,
+    plan,
+    status: typeof result.status === "string" ? result.status : "active",
+    freeQuestionsUsed: Number.isFinite(freeQuestionsUsed)
+      ? Math.min(freeQuestionLimit, Math.max(0, freeQuestionsUsed))
+      : 0,
+    freeLimit: Number.isFinite(parsedFreeLimit)
+      ? Math.max(0, parsedFreeLimit)
+      : freeQuestionLimit,
+    currentPeriodEnd: typeof currentPeriodEnd === "string" ? currentPeriodEnd : null,
+    hasFullAccess,
+    daysRemaining: Number.isFinite(daysRemaining) ? Math.max(0, daysRemaining) : 0,
+    expiresSoon: (result.expiresSoon ?? result.expires_soon) === true,
+    isExpired: (result.isExpired ?? result.is_expired) === true || (plan === "paid" && !hasFullAccess),
   };
 }
 
@@ -297,13 +339,22 @@ function parseFreeQuestionConsumption(value: unknown) {
 
   const result = value as {
     allowed?: unknown;
+    hasFullAccess?: unknown;
+    has_full_access?: unknown;
+    status?: unknown;
+    currentPeriodEnd?: unknown;
+    current_period_end?: unknown;
     freeQuestionsUsed?: unknown;
     free_questions_used?: unknown;
   };
   const freeQuestionsUsed = Number(result.freeQuestionsUsed ?? result.free_questions_used);
+  const currentPeriodEnd = result.currentPeriodEnd ?? result.current_period_end;
 
   return {
     allowed: result.allowed === true,
+    hasFullAccess: (result.hasFullAccess ?? result.has_full_access) === true,
+    status: typeof result.status === "string" ? result.status : "",
+    currentPeriodEnd: typeof currentPeriodEnd === "string" ? currentPeriodEnd : null,
     freeQuestionsUsed: Number.isFinite(freeQuestionsUsed)
       ? Math.min(freeQuestionLimit, Math.max(0, freeQuestionsUsed))
       : freeQuestionLimit,
@@ -446,10 +497,11 @@ function makeSimulation(
   size: number,
   areaFilter: AreaFilter = "all",
   examModel: ExamModelId = defaultExamModel,
+  questionPool: Question[] = questions,
 ) {
   if (areaFilter !== "all") {
     return shuffle(
-      questions.filter((question) => getQuestionArea(question, examModel) === areaFilter),
+      questionPool.filter((question) => getQuestionArea(question, examModel) === areaFilter),
     ).slice(0, size);
   }
 
@@ -466,7 +518,7 @@ function makeSimulation(
 
     return shuffle(
       legacyQuotas.flatMap(({ areaIds, count }) =>
-        shuffle(questions.filter((question) => areaIds.includes(question.area))).slice(0, count),
+        shuffle(questionPool.filter((question) => areaIds.includes(question.area))).slice(0, count),
       ),
     );
   }
@@ -481,7 +533,7 @@ function makeSimulation(
 
   return shuffle(
     quotas.flatMap(({ domain, count }) =>
-      shuffle(questions.filter((question) => question.domain === domain.id)).slice(0, count),
+      shuffle(questionPool.filter((question) => question.domain === domain.id)).slice(0, count),
     ),
   );
 }
@@ -501,6 +553,11 @@ function App() {
   const [accessStatus, setAccessStatus] = useState("active");
   const [accessPeriodEnd, setAccessPeriodEnd] = useState<string | null>(null);
   const [accountFreeQuestionsUsed, setAccountFreeQuestionsUsed] = useState(0);
+  const [accountFreeLimit, setAccountFreeLimit] = useState(freeQuestionLimit);
+  const [accountHasFullAccess, setAccountHasFullAccess] = useState(false);
+  const [accessDaysRemaining, setAccessDaysRemaining] = useState(0);
+  const [accessExpiresSoon, setAccessExpiresSoon] = useState(false);
+  const [accessExpired, setAccessExpired] = useState(false);
   const [accessLoading, setAccessLoading] = useState(isSupabaseConfigured);
   const [accessError, setAccessError] = useState("");
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -545,6 +602,11 @@ function App() {
         setAccessStatus("active");
         setAccessPeriodEnd(null);
         setAccountFreeQuestionsUsed(0);
+        setAccountFreeLimit(freeQuestionLimit);
+        setAccountHasFullAccess(false);
+        setAccessDaysRemaining(0);
+        setAccessExpiresSoon(false);
+        setAccessExpired(false);
         setAccessLoading(false);
         setAccessError("");
         setCheckoutError("");
@@ -634,11 +696,7 @@ function App() {
     setAccessError("");
 
     async function loadEntitlement() {
-      const { data, error } = await client
-        .from("account_entitlements")
-        .select("user_id, plan, status, free_questions_used, current_period_end")
-        .eq("user_id", userId)
-        .maybeSingle();
+      const { data, error } = await client.rpc("get_account_access");
 
       if (cancelled) return;
 
@@ -647,44 +705,26 @@ function App() {
         setAccessStatus("active");
         setAccessPeriodEnd(null);
         setAccountFreeQuestionsUsed(0);
+        setAccountFreeLimit(freeQuestionLimit);
+        setAccountHasFullAccess(false);
+        setAccessDaysRemaining(0);
+        setAccessExpiresSoon(false);
+        setAccessExpired(false);
         setAccessError(error.message);
         setAccessLoading(false);
         return;
       }
 
-      if (!data) {
-        const { data: insertedRow, error: insertError } = await client
-          .from("account_entitlements")
-          .insert({ user_id: userId, plan: "free", status: "active" })
-          .select("user_id, plan, status, free_questions_used, current_period_end")
-          .single();
-
-        if (cancelled) return;
-
-        if (insertError) {
-          setAccessPlan("free");
-          setAccessStatus("active");
-          setAccessPeriodEnd(null);
-          setAccountFreeQuestionsUsed(0);
-          setAccessError(insertError.message);
-          setAccessLoading(false);
-          return;
-        }
-
-        const entitlement = normalizeEntitlement(insertedRow as AccountEntitlementRow);
-        setAccessPlan(entitlement.plan);
-        setAccessStatus(entitlement.status);
-        setAccountFreeQuestionsUsed(entitlement.free_questions_used);
-        setAccessPeriodEnd(entitlement.current_period_end);
-        setAccessLoading(false);
-        return;
-      }
-
-      const entitlement = normalizeEntitlement(data as AccountEntitlementRow);
-      setAccessPlan(entitlement.plan);
-      setAccessStatus(entitlement.status);
-      setAccountFreeQuestionsUsed(entitlement.free_questions_used);
-      setAccessPeriodEnd(entitlement.current_period_end);
+      const access = parseAccessResult(data);
+      setAccessPlan(access.plan);
+      setAccessStatus(access.status);
+      setAccountFreeQuestionsUsed(access.freeQuestionsUsed);
+      setAccountFreeLimit(access.freeLimit);
+      setAccountHasFullAccess(access.hasFullAccess);
+      setAccessPeriodEnd(access.currentPeriodEnd);
+      setAccessDaysRemaining(access.daysRemaining);
+      setAccessExpiresSoon(access.expiresSoon);
+      setAccessExpired(access.isExpired);
       setAccessLoading(false);
     }
 
@@ -749,20 +789,17 @@ function App() {
   }, [profileState, session?.user?.id, remoteReady]);
 
   const stats = useMemo(() => buildStats(progress), [progress]);
-  const hasFullAccess = hasPaidAccess(accessPlan, accessStatus);
+  const hasFullAccess = accountHasFullAccess;
   const freeQuestionsUsed =
     isSupabaseConfigured && session ? accountFreeQuestionsUsed : progress.attempts.length;
   const freeQuestionsRemaining = hasFullAccess
     ? Number.POSITIVE_INFINITY
-    : Math.max(0, freeQuestionLimit - freeQuestionsUsed);
+    : accessExpired
+      ? 0
+      : Math.max(0, accountFreeLimit - freeQuestionsUsed);
 
   const startUpgrade = async () => {
     setCheckoutError("");
-
-    if (stripePaymentLink) {
-      window.location.assign(stripePaymentLink);
-      return;
-    }
 
     if (!supabase || !session) {
       setCheckoutError("Sign in before upgrading.");
@@ -799,10 +836,13 @@ function App() {
     plan: accessPlan,
     status: accessStatus,
     periodEnd: accessPeriodEnd,
+    daysRemaining: accessDaysRemaining,
+    expiresSoon: accessExpiresSoon,
+    isExpired: accessExpired,
     isLoading: accessLoading,
     error: accessError,
     hasFullAccess,
-    freeLimit: freeQuestionLimit,
+    freeLimit: accountFreeLimit,
     used: freeQuestionsUsed,
     remaining: freeQuestionsRemaining,
     isCheckoutLoading: checkoutLoading,
@@ -825,13 +865,13 @@ function App() {
     }));
   };
 
-  const consumeFreeQuestion = async () => {
+  const consumeQuestionAccess = async () => {
     if (hasFullAccess) return true;
 
     if (freeQuestionsRemaining <= 0) return false;
 
     if (supabase && session) {
-      const { data, error } = await supabase.rpc("consume_free_question");
+      const { data, error } = await supabase.rpc("consume_question_access");
       if (error) {
         setAccessError(error.message);
         return false;
@@ -839,6 +879,16 @@ function App() {
 
       const result = parseFreeQuestionConsumption(data);
       setAccountFreeQuestionsUsed(result.freeQuestionsUsed);
+      if (result.status) setAccessStatus(result.status);
+      if (result.currentPeriodEnd) setAccessPeriodEnd(result.currentPeriodEnd);
+      if (result.hasFullAccess) {
+        setAccountHasFullAccess(true);
+        setAccessExpired(false);
+      }
+      if (result.status === "expired") {
+        setAccountHasFullAccess(false);
+        setAccessExpired(true);
+      }
       return result.allowed;
     }
 
@@ -851,7 +901,7 @@ function App() {
     confidence: number,
     examModel: ExamModelId = defaultExamModel,
   ) => {
-    const canRecord = await consumeFreeQuestion();
+    const canRecord = await consumeQuestionAccess();
     if (!canRecord) return false;
 
     setProgress((current) => ({
@@ -980,6 +1030,8 @@ function App() {
           />
         </div>
       </header>
+
+      <AccessNotice access={accessState} />
 
       {view === "dashboard" && (
         <Dashboard
@@ -1445,10 +1497,14 @@ function AccountStatus({
   const accessSummary = access.isLoading
     ? "Checking access"
     : access.hasFullAccess
-      ? paidThrough
-        ? `Full access through ${paidThrough}`
-        : "Full access"
-      : `${access.remaining} free left`;
+      ? access.expiresSoon
+        ? `${access.daysRemaining} days of access left`
+        : paidThrough
+          ? `Full access through ${paidThrough}`
+          : "Full access"
+      : access.isExpired
+        ? "Access expired"
+        : `${access.remaining} sample left`;
 
   const handleAccountPasswordUpdate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1593,22 +1649,66 @@ function AccessBadge({ access }: { access: AccessState }) {
     const paidThrough = formatAccessDate(access.periodEnd);
     return (
       <span className="access-pill is-paid">
-        {paidThrough ? `Full access through ${paidThrough}` : "Full access"}
+        {access.expiresSoon
+          ? `${access.daysRemaining} days left`
+          : paidThrough
+            ? `Full access through ${paidThrough}`
+            : "Full access"}
       </span>
     );
   }
 
+  if (access.isExpired) {
+    return <span className="access-pill is-expired">Access expired</span>;
+  }
+
   return (
     <span className="access-pill">
-      Free plan · {access.remaining}/{access.freeLimit} questions left
+      Free sample · {access.remaining}/{access.freeLimit} left
     </span>
   );
+}
+
+function AccessNotice({ access }: { access: AccessState }) {
+  if (access.hasFullAccess && access.expiresSoon) {
+    return (
+      <div className="access-banner is-warning">
+        <AccessBadge access={access} />
+        <span>
+          Your {paidAccessDays}-day access is close to ending. Re-purchase anytime after
+          expiration to unlock another {paidAccessDays} days.
+        </span>
+      </div>
+    );
+  }
+
+  if (access.isExpired) {
+    return (
+      <div className="access-banner is-warning">
+        <AccessBadge access={access} />
+        <span>
+          Your paid access ended. Your account and progress are still saved; purchase again
+          to unlock all questions for another {paidAccessDays} days.
+        </span>
+        <button
+          className="primary-action"
+          type="button"
+          onClick={access.onUpgrade}
+          disabled={access.isCheckoutLoading || access.isLoading}
+        >
+          {access.isCheckoutLoading ? "Opening checkout..." : `Repurchase for ${accessPriceLabel}`}
+        </button>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 function UpgradePanel({
   access,
   title = "Unlock the full question bank",
-  detail = "Free accounts include 25 answered questions. Upgrade to keep practicing across all domains, study areas, simulations, rationales, and progress tracking.",
+  detail,
   compact = false,
 }: {
   access: AccessState;
@@ -1617,13 +1717,21 @@ function UpgradePanel({
   compact?: boolean;
 }) {
   if (access.hasFullAccess) return null;
+  const resolvedDetail =
+    detail ||
+    (access.isExpired
+      ? `Your ${paidAccessDays}-day access has ended. Re-purchase once for ${accessPriceLabel} to unlock all 2,500 questions for another ${paidAccessDays} days.`
+      : `Free accounts include ${access.freeLimit} sample questions. Pay ${accessPriceLabel} once to unlock all 2,500 questions for ${paidAccessDays} days.`);
+  const buttonLabel = access.isExpired
+    ? `Repurchase for ${accessPriceLabel}`
+    : `Unlock for ${accessPriceLabel}`;
 
   return (
     <section className={compact ? "upgrade-panel is-compact" : "upgrade-panel"}>
       <div>
-        <p className="eyebrow">Free access</p>
+        <p className="eyebrow">{access.isExpired ? "Access expired" : "Free access"}</p>
         <h3>{title}</h3>
-        <p>{detail}</p>
+        <p>{resolvedDetail}</p>
         {access.error && <p className="upgrade-note">{access.error}</p>}
         {access.checkoutError && <p className="upgrade-note">{access.checkoutError}</p>}
       </div>
@@ -1638,7 +1746,7 @@ function UpgradePanel({
           ? "Checking access..."
           : access.isCheckoutLoading
             ? "Opening checkout..."
-            : "Upgrade for full access"}
+            : buttonLabel}
       </button>
     </section>
   );
@@ -1919,20 +2027,27 @@ function Dashboard({
               : "Attempts, bookmarks, planner checks, and readiness history are saved on this device."}
           </p>
           {!access.hasFullAccess && (
-            <div className="free-meter" aria-label="Free practice questions remaining">
-              <div>
-                <span>{access.used}</span>
-                <small>used</small>
+            access.isExpired ? (
+              <div className="empty-state">
+                <Lock aria-hidden="true" size={22} />
+                <p>Question access is paused until this account purchases another 180-day pass.</p>
               </div>
-              <div>
-                <span>{access.remaining}</span>
-                <small>free left</small>
+            ) : (
+              <div className="free-meter" aria-label="Free sample questions remaining">
+                <div>
+                  <span>{access.used}</span>
+                  <small>sample used</small>
+                </div>
+                <div>
+                  <span>{access.remaining}</span>
+                  <small>sample left</small>
+                </div>
+                <div>
+                  <span>{access.freeLimit}</span>
+                  <small>sample limit</small>
+                </div>
               </div>
-              <div>
-                <span>{access.freeLimit}</span>
-                <small>free limit</small>
-              </div>
-            </div>
+            )
           )}
           {!access.hasFullAccess && <UpgradePanel access={access} compact />}
           <button className="danger-action" type="button" onClick={resetProgress}>
@@ -2067,26 +2182,29 @@ function PracticeView({
     correct: 0,
     review: 0,
   });
+  const questionPool = access.hasFullAccess ? questions : freeSampleQuestions;
 
   const filteredQuestions = useMemo(() => {
-    return questions.filter((question) => {
+    return questionPool.filter((question) => {
       const matchesDomain = domainFilter === "all" || question.domain === domainFilter;
       const matchesArea =
         areaFilter === "all" || getQuestionArea(question, examModel) === areaFilter;
       return matchesDomain && matchesArea;
     });
-  }, [areaFilter, domainFilter, examModel]);
+  }, [areaFilter, domainFilter, examModel, questionPool]);
 
   const activeQuestions = practiceQueue.length ? practiceQueue : filteredQuestions;
-  const question = activeQuestions[index % activeQuestions.length];
-  const domain = domainMap.get(question.domain)!;
-  const areaId = getQuestionArea(question, examModel);
-  const area = examAreaMap.get(areaKey(examModel, areaId))!;
-  const isBookmarked = progress.bookmarks.includes(question.id);
-  const currentQuestionNumber = (index % activeQuestions.length) + 1;
-  const positionPercent = Math.round((currentQuestionNumber / activeQuestions.length) * 100);
-  const canAnswer = access.hasFullAccess || access.remaining > 0;
-  const canUseCurrentQuestion = canAnswer || revealed;
+  const question = activeQuestions.length ? activeQuestions[index % activeQuestions.length] : null;
+  const domain = question ? domainMap.get(question.domain)! : null;
+  const areaId = question ? getQuestionArea(question, examModel) : null;
+  const area = areaId ? examAreaMap.get(areaKey(examModel, areaId))! : null;
+  const isBookmarked = question ? progress.bookmarks.includes(question.id) : false;
+  const currentQuestionNumber = activeQuestions.length ? (index % activeQuestions.length) + 1 : 0;
+  const positionPercent = activeQuestions.length
+    ? Math.round((currentQuestionNumber / activeQuestions.length) * 100)
+    : 0;
+  const canAnswer = access.hasFullAccess || (!access.isExpired && access.remaining > 0);
+  const canUseCurrentQuestion = Boolean(question) && (canAnswer || revealed);
 
   useEffect(() => {
     setPracticeQueue(shuffle(filteredQuestions));
@@ -2129,7 +2247,7 @@ function PracticeView({
   };
 
   const submitAnswer = () => {
-    if (selectedIndex === null || revealed || !canAnswer || isSubmitting) return;
+    if (!question || selectedIndex === null || revealed || !canAnswer || isSubmitting) return;
     setIsSubmitting(true);
     const correct = selectedIndex === question.answerIndex;
     recordAttempt(question, selectedIndex, confidence, examModel).then((wasRecorded) => {
@@ -2202,7 +2320,7 @@ function PracticeView({
         <div className="access-banner">
           <AccessBadge access={access} />
           <span>
-            Free accounts can answer {access.freeLimit} questions before upgrading.
+            Free accounts can answer {access.freeLimit} sample questions before upgrading.
           </span>
         </div>
       )}
@@ -2248,35 +2366,41 @@ function PracticeView({
             <UpgradePanel
               access={access}
               title="You reached the free practice limit"
-              detail="You answered 25 free questions. Upgrade to continue with all 2,500 questions, focused study areas, simulations, and progress tracking."
+              detail={
+                access.isExpired
+                  ? `Your ${paidAccessDays}-day access ended. Purchase again to resume practice and keep your saved progress.`
+                  : !question
+                    ? "This filter does not include a free sample item. Clear the filters or unlock the full bank."
+                    : `You answered ${access.freeLimit} sample questions. Unlock all 2,500 questions, focused study areas, simulations, and progress tracking.`
+              }
             />
           ) : (
             <>
               <div className="question-meta">
-                <span className="domain-chip" style={{ borderColor: domain.color }}>
-                  {domain.name}
+                <span className="domain-chip" style={{ borderColor: domain!.color }}>
+                  {domain!.name}
                 </span>
-                <span className="area-chip" title={area.name}>
-                  {areaId} · {area.name}
+                <span className="area-chip" title={area!.name}>
+                  {areaId} · {area!.name}
                 </span>
-                <span>{question.skill}</span>
-                <span>{question.difficulty}</span>
+                <span>{question!.skill}</span>
+                <span>{question!.difficulty}</span>
                 <button
                   className="icon-action"
                   type="button"
                   aria-label={isBookmarked ? "Remove bookmark" : "Bookmark question"}
-                  onClick={() => toggleBookmark(question.id)}
+                  onClick={() => toggleBookmark(question!.id)}
                 >
                   {isBookmarked ? <BookmarkCheck size={18} /> : <Bookmark size={18} />}
                 </button>
               </div>
 
-              <h3>{question.stem}</h3>
+              <h3>{question!.stem}</h3>
 
               <div className="option-list" role="radiogroup" aria-label="Answer options">
-                {question.options.map((option, optionIndex) => {
+                {question!.options.map((option, optionIndex) => {
                   const isSelected = selectedIndex === optionIndex;
-                  const isCorrect = question.answerIndex === optionIndex;
+                  const isCorrect = question!.answerIndex === optionIndex;
                   const stateClass = revealed
                     ? isCorrect
                       ? "is-correct"
@@ -2322,9 +2446,9 @@ function PracticeView({
 
               {revealed && (
                 <div className="rationale-box">
-                  <strong>{selectedIndex === question.answerIndex ? "Correct" : "Review this one"}</strong>
-                  <p>{question.rationale}</p>
-                  <p className="exam-lens">{question.examLens}</p>
+                  <strong>{selectedIndex === question!.answerIndex ? "Correct" : "Review this one"}</strong>
+                  <p>{question!.rationale}</p>
+                  <p className="exam-lens">{question!.examLens}</p>
                 </div>
               )}
 
@@ -2389,11 +2513,27 @@ function SimulationView({
   const selectedIndex = activeQuestion ? answers[activeQuestion.id] : undefined;
   const selectedModel = examModels.find((model) => model.id === examModel)!;
   const simulationSizes = examModel === "2026" ? [12, 24, 60, 122] : [20, 50, 85, 170];
+  const questionPool = access.hasFullAccess ? questions : freeSampleQuestions;
+  const availableQuestionCount =
+    areaFilter === "all"
+      ? questionPool.length
+      : questionPool.filter((question) => getQuestionArea(question, examModel) === areaFilter).length;
+  const accessCapacity = access.hasFullAccess
+    ? Number.POSITIVE_INFINITY
+    : access.isExpired
+      ? 0
+      : Math.min(access.remaining, availableQuestionCount);
   const availableSimulationSizes = simulationSizes.filter(
-    (option) => access.hasFullAccess || option <= access.remaining,
+    (option) => option <= accessCapacity && option <= availableQuestionCount,
   );
-  const selectedSizeAllowed = access.hasFullAccess || size <= access.remaining;
-  const canStartSimulation = !access.isLoading && (access.hasFullAccess || access.remaining > 0);
+  const selectedSizeAllowed =
+    size <= availableQuestionCount &&
+    (access.hasFullAccess || (!access.isExpired && size <= access.remaining));
+  const canStartSimulation =
+    !access.isLoading &&
+    selectedSizeAllowed &&
+    availableQuestionCount > 0 &&
+    (access.hasFullAccess || accessCapacity > 0);
   const timerMinutes = Math.max(
     5,
     Math.round((size / selectedModel.questionCount) * selectedModel.timeLimitMinutes),
@@ -2408,11 +2548,12 @@ function SimulationView({
   };
 
   useEffect(() => {
-    if (access.hasFullAccess) return;
-    const allowedSizes = simulationSizes.filter((option) => option <= access.remaining);
+    const allowedSizes = simulationSizes.filter(
+      (option) => option <= accessCapacity && option <= availableQuestionCount,
+    );
     if (!allowedSizes.length) return;
     if (!allowedSizes.includes(size)) setSize(allowedSizes[allowedSizes.length - 1]);
-  }, [access.hasFullAccess, access.remaining, examModel, size]);
+  }, [access.hasFullAccess, accessCapacity, availableQuestionCount, examModel, size]);
 
   useEffect(() => {
     if (!simulationQuestions.length || finished) return undefined;
@@ -2432,7 +2573,7 @@ function SimulationView({
 
   const startSimulation = () => {
     if (!canStartSimulation || !selectedSizeAllowed) return;
-    const nextQuestions = makeSimulation(size, areaFilter, examModel);
+    const nextQuestions = makeSimulation(size, areaFilter, examModel, questionPool);
     setSimulationQuestions(nextQuestions);
     setAnswers({});
     setFlagged([]);
@@ -2481,7 +2622,7 @@ function SimulationView({
             <AccessBadge access={access} />
             <span>
               Free accounts can answer {access.freeLimit} total questions. Timed sprints only
-              show lengths that fit your remaining free access.
+              use sample questions and only show lengths that fit your remaining access.
             </span>
           </div>
         )}
@@ -2496,7 +2637,7 @@ function SimulationView({
                   key={option}
                   type="button"
                   className={size === option ? "is-selected" : ""}
-                  disabled={!access.hasFullAccess && option > access.remaining}
+                  disabled={option > accessCapacity || option > availableQuestionCount}
                   onClick={() => setSize(option)}
                 >
                   <strong>{option}</strong>
@@ -2516,7 +2657,11 @@ function SimulationView({
               <UpgradePanel
                 access={access}
                 title="Timed simulations need an upgrade"
-                detail="Your remaining free questions are below the shortest simulation. Use Practice for the last free questions, or upgrade for every timed sprint."
+                detail={
+                  access.isExpired
+                    ? `Your ${paidAccessDays}-day access ended. Purchase again to resume timed simulations.`
+                    : "Your remaining sample questions are below the shortest simulation. Use Practice for the last sample questions, or unlock every timed sprint."
+                }
               />
             )}
             <button
@@ -2545,6 +2690,7 @@ function SimulationView({
             </p>
             <p className="muted">
               Practice questions available in this model: {questions.length}.
+              {!access.hasFullAccess && ` Free sample questions available now: ${availableQuestionCount}.`}
             </p>
           </aside>
         </div>

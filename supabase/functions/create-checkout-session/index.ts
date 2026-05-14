@@ -48,7 +48,6 @@ serve(async (req) => {
   const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
   const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
   const stripePriceId = Deno.env.get("STRIPE_PRICE_ID");
-  const checkoutMode = Deno.env.get("STRIPE_CHECKOUT_MODE") || "subscription";
 
   if (!supabaseUrl || !supabaseAnonKey || !stripeSecretKey || !stripePriceId) {
     return jsonResponse({ error: "Checkout is not configured." }, 500);
@@ -86,19 +85,22 @@ serve(async (req) => {
     : siteFallbackUrl("?checkout=cancelled");
 
   const params = new URLSearchParams({
-    mode: checkoutMode,
+    mode: "payment",
     success_url: successUrl,
     cancel_url: cancelUrl,
     client_reference_id: user.id,
+    customer_creation: "always",
     "line_items[0][price]": stripePriceId,
     "line_items[0][quantity]": "1",
     "metadata[user_id]": user.id,
+    "metadata[product]": "aswb-clinical-exam-prep-180-day-access",
+    "metadata[access_days]": "180",
+    "payment_intent_data[metadata][user_id]": user.id,
+    "payment_intent_data[metadata][product]": "aswb-clinical-exam-prep-180-day-access",
+    "payment_intent_data[metadata][access_days]": "180",
   });
 
   if (user.email) params.set("customer_email", user.email);
-  if (checkoutMode === "subscription") {
-    params.set("subscription_data[metadata][user_id]", user.id);
-  }
 
   const stripeResponse = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",

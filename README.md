@@ -36,10 +36,18 @@ from the Supabase SQL editor or Supabase CLI. The migration creates a `learner_p
 table with Row Level Security so each authenticated user can only access their own learner
 profiles and saved progress.
 
-Run `supabase/migrations/202605140002_create_account_entitlements.sql` as well to enable
-free and paid access. New accounts start on the free plan and can answer 25 questions. Paid
-access is stored in `account_entitlements`, and only the backend service role can promote an
-account to paid.
+Run the remaining migrations in order as well:
+
+- `supabase/migrations/202605140002_create_account_entitlements.sql`
+- `supabase/migrations/202605140003_one_time_purchase_access.sql`
+
+New accounts start on the free plan and can answer 75 sample questions. A one-time Stripe
+Checkout payment unlocks all 2,500 questions for 180 days. Access is stored in
+`account_entitlements`; the frontend reads entitlement state through server-side RPCs and only
+the backend service role can activate paid access.
+
+The access migration also creates `account_access_events` for funnel metrics such as first
+question answered, free sample exhausted, purchases, and expirations.
 
 In Supabase Auth settings, set the site URL and redirect URLs to the app URL you are using,
 for example `http://127.0.0.1:5173/` locally and the production URL after deployment. Email
@@ -51,8 +59,8 @@ The app supports Stripe Checkout through Supabase Edge Functions:
 
 - `supabase/functions/create-checkout-session` creates a Stripe Checkout Session for the
   signed-in user.
-- `supabase/functions/stripe-webhook` verifies Stripe webhook signatures and updates the
-  user's entitlement after checkout or subscription changes.
+- `supabase/functions/stripe-webhook` verifies Stripe webhook signatures and grants 180 days
+  of access after a successful one-time payment.
 
 Set these Supabase Edge Function secrets before deploying the functions:
 
@@ -65,6 +73,9 @@ supabase secrets set \
   SUPABASE_SERVICE_ROLE_KEY=...
 ```
 
+`STRIPE_PRICE_ID` should be a one-time Stripe Price for `$49.00`. In Stripe, enable customer
+email receipts so Checkout sends the receipt automatically after payment.
+
 Then deploy:
 
 ```bash
@@ -72,13 +83,10 @@ supabase functions deploy create-checkout-session
 supabase functions deploy stripe-webhook
 ```
 
-For a quick manual payment-link test, set `VITE_STRIPE_PAYMENT_LINK` in GitHub Pages secrets.
-That redirects users to Stripe, but the secure entitlement change should still happen through
-the webhook or an admin update.
-
 Note: the current GitHub Pages build still ships the question bank in the frontend bundle, so
-this is a product access gate for normal app use. A stronger content paywall would move question
-delivery into Supabase functions that only return full-bank questions to paid users.
+this is a product access gate for normal app use. Access decisions and question-attempt
+consumption are enforced server-side, but a stronger content paywall would move question delivery
+into Supabase functions that only return full-bank questions to paid users.
 
 ## Features
 
@@ -86,7 +94,9 @@ delivery into Supabase functions that only return full-bank questions to paid us
 - Dashboard knowledge map by domain and study area
 - 2,500 original exam-style Clinical practice questions with rationales
 - Switch between testing on/after August 3, 2026 and testing before August 3, 2026
-- Free account access for the first 25 answered questions, with a paid upgrade path for the full bank
+- Free account access for 75 sample questions
+- One-time $49 purchase unlocks all questions and study modes for 180 days
+- 14-day expiration warning and re-purchase support after access lapses
 - Focused practice by 2026 exam area or pre-2026 Clinical study area, including IA through IVC
 - Timed simulation sprints using the selected ASWB model's question count and pacing
 - The 2,500-question practice bank is mapped to both the 2026 blueprint and the 2018 pre-transition outline

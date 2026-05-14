@@ -568,6 +568,13 @@ a {
   border-color: #b7dcd0;
 }
 
+.access-pill.is-expired,
+.hero-points .access-pill.is-expired {
+  color: #8a2f25;
+  background: #fff1ed;
+  border-color: #e6b8ad;
+}
+
 .access-banner {
   display: flex;
   flex-wrap: wrap;
@@ -579,6 +586,10 @@ a {
   border: 1px solid #e1c498;
   border-radius: 8px;
   box-shadow: 0 12px 28px rgba(122, 77, 50, 0.08);
+}
+
+.access-banner.is-warning {
+  margin-bottom: 18px;
 }
 
 .access-banner > span:not(.access-pill) {

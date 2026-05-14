@@ -5,7 +5,6 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undef
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 export const isAccountAccessRequired = import.meta.env.VITE_REQUIRE_AUTH === "true";
-export const stripePaymentLink = import.meta.env.VITE_STRIPE_PAYMENT_LINK as string | undefined;
 
 export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl!, supabaseAnonKey!, {

@@ -29,8 +29,6 @@ import {
   Timer,
   Trophy,
   UserCircle,
-  UserPlus,
-  Users,
   XCircle,
 } from "lucide-react";
 import {
@@ -168,16 +166,6 @@ function createUserProfile(name: string, progress: ProgressState = initialProgre
     createdAt: new Date().toISOString(),
     progress: normalizeProgress(progress),
   };
-}
-
-function getUniqueProfileName(profiles: UserProfile[], requestedName: string) {
-  const baseName = requestedName.trim() || `Learner ${profiles.length + 1}`;
-  const existingNames = new Set(profiles.map((profile) => profile.name.toLowerCase()));
-  if (!existingNames.has(baseName.toLowerCase())) return baseName;
-
-  let index = 2;
-  while (existingNames.has(`${baseName} ${index}`.toLowerCase())) index += 1;
-  return `${baseName} ${index}`;
 }
 
 function loadProfileState(): ProfileState {
@@ -610,45 +598,6 @@ function App() {
     }));
   };
 
-  const switchProfile = (profileId: string) => {
-    setProfileState((currentState) =>
-      currentState.profiles.some((profile) => profile.id === profileId)
-        ? { ...currentState, activeProfileId: profileId }
-        : currentState,
-    );
-  };
-
-  const addProfile = (name: string) => {
-    setProfileState((currentState) => {
-      const profile = createUserProfile(getUniqueProfileName(currentState.profiles, name));
-      return {
-        profiles: [...currentState.profiles, profile],
-        activeProfileId: profile.id,
-      };
-    });
-    setView("dashboard");
-  };
-
-  const removeProfile = (profileId: string) => {
-    const profile = profileState.profiles.find((item) => item.id === profileId);
-    if (!profile || profileState.profiles.length <= 1) return;
-    const confirmed = window.confirm(
-      `Remove ${profile.name} and all saved progress for this learner?`,
-    );
-    if (!confirmed) return;
-
-    setProfileState((currentState) => {
-      const nextProfiles = currentState.profiles.filter((item) => item.id !== profileId);
-      return {
-        profiles: nextProfiles,
-        activeProfileId:
-          currentState.activeProfileId === profileId
-            ? nextProfiles[0].id
-            : currentState.activeProfileId,
-      };
-    });
-  };
-
   const recordAttempt = (
     question: Question,
     selectedIndex: number,
@@ -703,7 +652,7 @@ function App() {
 
   const resetProgress = () => {
     const confirmed = window.confirm(
-      `Reset saved attempts, bookmarks, and planner progress for ${activeProfile.name}?`,
+      "Reset saved attempts, bookmarks, and planner progress for this account?",
     );
     if (confirmed) setProgress(initialProgress);
   };
@@ -771,13 +720,6 @@ function App() {
               );
             })}
           </nav>
-          <ProfileSwitcher
-            profiles={profileState.profiles}
-            activeProfileId={activeProfile.id}
-            onSwitch={switchProfile}
-            onCreate={addProfile}
-            onRemove={removeProfile}
-          />
           <AccountStatus
             session={session}
             syncStatus={syncStatus}
@@ -791,8 +733,7 @@ function App() {
         <Dashboard
           stats={stats}
           progress={progress}
-          activeProfile={activeProfile}
-          profileCount={profileState.profiles.length}
+          accountEmail={session?.user.email ?? ""}
           setView={setView}
           resetProgress={resetProgress}
         />
@@ -828,7 +769,7 @@ function LoadingScreen() {
         </div>
         <p className="eyebrow">Connecting backend</p>
         <h1>Loading your study profile</h1>
-        <p className="muted">Preparing Supabase Auth and saved learner progress.</p>
+        <p className="muted">Preparing Supabase Auth and saved account progress.</p>
       </section>
     </main>
   );
@@ -970,7 +911,7 @@ function AuthScreen() {
         <p className="muted">
           {isResetMode
             ? "Enter your email and we will send a secure link to set a new password."
-            : "Supabase is enabled for this app. Sign in to save attempts, bookmarks, planner progress, and learner profiles across devices."}
+            : "Supabase is enabled for this app. Sign in to save attempts, bookmarks, planner progress, and readiness history across devices."}
         </p>
 
         {!isResetMode && (
@@ -1374,88 +1315,16 @@ function AccountStatus({
   );
 }
 
-function ProfileSwitcher({
-  profiles,
-  activeProfileId,
-  onSwitch,
-  onCreate,
-  onRemove,
-}: {
-  profiles: UserProfile[];
-  activeProfileId: string;
-  onSwitch: (profileId: string) => void;
-  onCreate: (name: string) => void;
-  onRemove: (profileId: string) => void;
-}) {
-  const [newProfileName, setNewProfileName] = useState("");
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const name = newProfileName.trim();
-    if (!name) return;
-    onCreate(name);
-    setNewProfileName("");
-  };
-
-  return (
-    <section className="profile-switcher" aria-label="Learner profiles">
-      <label className="profile-select">
-        <span>
-          <Users aria-hidden="true" size={14} />
-          Learner
-        </span>
-        <select
-          aria-label="Active learner profile"
-          value={activeProfileId}
-          onChange={(event) => onSwitch(event.target.value)}
-        >
-          {profiles.map((profile) => (
-            <option key={profile.id} value={profile.id}>
-              {profile.name}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <form className="profile-create" onSubmit={handleSubmit}>
-        <input
-          aria-label="New learner name"
-          maxLength={32}
-          placeholder="New learner"
-          type="text"
-          value={newProfileName}
-          onChange={(event) => setNewProfileName(event.target.value)}
-        />
-        <button type="submit" disabled={!newProfileName.trim()}>
-          <UserPlus aria-hidden="true" size={15} />
-          <span>Add</span>
-        </button>
-      </form>
-
-      <button
-        className="profile-remove"
-        type="button"
-        disabled={profiles.length <= 1}
-        onClick={() => onRemove(activeProfileId)}
-      >
-        Remove
-      </button>
-    </section>
-  );
-}
-
 function Dashboard({
   stats,
   progress,
-  activeProfile,
-  profileCount,
+  accountEmail,
   setView,
   resetProgress,
 }: {
   stats: ReturnType<typeof buildStats>;
   progress: ProgressState;
-  activeProfile: UserProfile;
-  profileCount: number;
+  accountEmail: string;
   setView: (view: View) => void;
   resetProgress: () => void;
 }) {
@@ -1708,19 +1577,18 @@ function Dashboard({
         <aside className="panel">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Learner data</p>
-              <h3>{activeProfile.name}'s progress</h3>
+              <p className="eyebrow">Account progress</p>
+              <h3>{accountEmail || "Local study session"}</h3>
             </div>
           </div>
           <p className="muted">
             {isSupabaseConfigured
-              ? "Attempts, bookmarks, and planner checks sync to Supabase for this learner."
-              : "Attempts, bookmarks, and planner checks are saved separately for this learner in this browser."}{" "}
-            {profileCount} learner {profileCount === 1 ? "profile is" : "profiles are"} available here.
+              ? "Attempts, bookmarks, planner checks, and readiness history sync to the signed-in account."
+              : "Attempts, bookmarks, planner checks, and readiness history are saved on this device."}
           </p>
           <button className="danger-action" type="button" onClick={resetProgress}>
             <RotateCcw aria-hidden="true" size={17} />
-            Reset this learner
+            Reset my progress
           </button>
         </aside>
       </div>

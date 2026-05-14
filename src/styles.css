@@ -276,104 +276,6 @@ a {
   min-width: 0;
 }
 
-.profile-switcher {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
-  gap: 8px;
-  max-width: 460px;
-  padding: 8px;
-  background: rgba(255, 253, 248, 0.82);
-  border: 1px solid rgba(24, 34, 31, 0.1);
-  border-radius: 8px;
-}
-
-.profile-select {
-  display: grid;
-  min-width: 160px;
-  gap: 4px;
-}
-
-.profile-select span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: #6c756e;
-  font-size: 0.72rem;
-  font-weight: 900;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.profile-select select,
-.profile-create input {
-  min-height: 36px;
-  color: #354039;
-  background: #fffaf1;
-  border: 1px solid #d9d0c2;
-  border-radius: 8px;
-  font-weight: 800;
-}
-
-.profile-select select {
-  width: 100%;
-  padding: 0 10px;
-}
-
-.profile-create {
-  display: grid;
-  grid-template-columns: minmax(116px, 1fr) auto;
-  gap: 6px;
-  align-items: end;
-  min-width: 0;
-}
-
-.profile-create input {
-  width: 100%;
-  min-width: 0;
-  padding: 0 10px;
-}
-
-.profile-create button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 36px;
-  gap: 5px;
-  padding: 0 10px;
-  color: #fffdf8;
-  background: #1f625f;
-  border: 1px solid #1f625f;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 0.84rem;
-  font-weight: 900;
-  transition:
-    transform 160ms ease,
-    border-color 160ms ease,
-    background 160ms ease,
-    box-shadow 160ms ease;
-}
-
-.profile-remove {
-  min-height: 36px;
-  padding: 0 10px;
-  color: #8a2f25;
-  background: #fff1ed;
-  border: 1px solid #e6b8ad;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 0.84rem;
-  font-weight: 900;
-}
-
-.profile-create button:disabled,
-.profile-remove:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-  transform: none;
-}
-
 .account-status {
   position: relative;
   display: grid;
@@ -565,8 +467,6 @@ a {
 .text-action:hover,
 .icon-action:hover,
 .mini-reset:hover,
-.profile-create button:hover:not(:disabled),
-.profile-remove:hover:not(:disabled),
 .account-status button:hover:not(:disabled),
 .model-toggle button:hover,
 .segmented-control button:hover,
@@ -1649,11 +1549,6 @@ input:disabled {
     justify-content: flex-start;
   }
 
-  .profile-switcher {
-    width: 100%;
-    max-width: none;
-  }
-
   .account-status {
     width: 100%;
     max-width: none;
@@ -1741,19 +1636,6 @@ input:disabled {
 
   .header-tools {
     width: 100%;
-  }
-
-  .profile-switcher {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
-
-  .profile-select {
-    min-width: 0;
-  }
-
-  .profile-create {
-    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .account-status {

@@ -44,7 +44,12 @@ import {
   planTasks,
   questions,
 } from "./data/exam";
-import { isAccountAccessRequired, isSupabaseConfigured, supabase } from "./lib/supabase";
+import {
+  isAccountAccessRequired,
+  isSupabaseConfigured,
+  stripePaymentLink,
+  supabase,
+} from "./lib/supabase";
 
 type View = "dashboard" | "practice" | "simulation" | "flashcards" | "planner";
 type AreaFilter = ExamAreaId | "all";
@@ -87,8 +92,32 @@ interface LearnerProfileRow {
   progress: unknown;
 }
 
+interface AccountEntitlementRow {
+  user_id: string;
+  plan: AccessPlan;
+  status: string;
+  free_questions_used: number;
+  current_period_end: string | null;
+}
+
+interface AccessState {
+  plan: AccessPlan;
+  status: string;
+  periodEnd: string | null;
+  isLoading: boolean;
+  error: string;
+  hasFullAccess: boolean;
+  freeLimit: number;
+  used: number;
+  remaining: number;
+  isCheckoutLoading: boolean;
+  checkoutError: string;
+  onUpgrade: () => void;
+}
+
 type SyncStatus = "local" | "loading" | "synced" | "saving" | "error";
 type AuthMode = "sign-in" | "sign-up" | "reset-password";
+type AccessPlan = "free" | "paid";
 
 const initialProgress: ProgressState = {
   attempts: [],
@@ -101,6 +130,7 @@ const progressStorageKey = "aswb-clinical-prep-progress-v1";
 const profileStorageKey = "aswb-clinical-prep-user-profiles-v1";
 const activeProfileStorageKey = "aswb-clinical-prep-active-profile-v1";
 const minimumPasswordLength = 8;
+const freeQuestionLimit = 25;
 
 const navItems: Array<{ id: View; label: string; icon: typeof BarChart3 }> = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
@@ -243,11 +273,59 @@ function ensureProfileStateHasActiveProfile(profiles: UserProfile[]): ProfileSta
   };
 }
 
+function hasPaidAccess(plan: AccessPlan, status: string) {
+  return plan === "paid" && ["active", "trialing", "lifetime"].includes(status);
+}
+
+function normalizeEntitlement(row: AccountEntitlementRow | null): Pick<
+  AccountEntitlementRow,
+  "plan" | "status" | "free_questions_used" | "current_period_end"
+> {
+  return {
+    plan: row?.plan === "paid" ? "paid" : "free",
+    status: row?.status || "active",
+    free_questions_used:
+      typeof row?.free_questions_used === "number" ? row.free_questions_used : 0,
+    current_period_end: row?.current_period_end ?? null,
+  };
+}
+
+function parseFreeQuestionConsumption(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return { allowed: false, freeQuestionsUsed: freeQuestionLimit };
+  }
+
+  const result = value as {
+    allowed?: unknown;
+    freeQuestionsUsed?: unknown;
+    free_questions_used?: unknown;
+  };
+  const freeQuestionsUsed = Number(result.freeQuestionsUsed ?? result.free_questions_used);
+
+  return {
+    allowed: result.allowed === true,
+    freeQuestionsUsed: Number.isFinite(freeQuestionsUsed)
+      ? Math.min(freeQuestionLimit, Math.max(0, freeQuestionsUsed))
+      : freeQuestionLimit,
+  };
+}
+
 function formatTime(minutes: number) {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
   if (hours === 0) return `${mins}m`;
   return `${hours}h ${mins.toString().padStart(2, "0")}m`;
+}
+
+function formatAccessDate(value: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function formatCountdown(seconds: number) {
@@ -419,6 +497,14 @@ function App() {
   const [syncError, setSyncError] = useState("");
   const [passwordRecoveryActive, setPasswordRecoveryActive] = useState(false);
   const [remoteReady, setRemoteReady] = useState(!isSupabaseConfigured);
+  const [accessPlan, setAccessPlan] = useState<AccessPlan>("free");
+  const [accessStatus, setAccessStatus] = useState("active");
+  const [accessPeriodEnd, setAccessPeriodEnd] = useState<string | null>(null);
+  const [accountFreeQuestionsUsed, setAccountFreeQuestionsUsed] = useState(0);
+  const [accessLoading, setAccessLoading] = useState(isSupabaseConfigured);
+  const [accessError, setAccessError] = useState("");
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState("");
   const lastRemoteFingerprint = useRef("");
   const remoteSaveTimer = useRef<number | null>(null);
   const activeProfile =
@@ -455,6 +541,13 @@ function App() {
         setRemoteReady(false);
         lastRemoteFingerprint.current = "";
         setPasswordRecoveryActive(false);
+        setAccessPlan("free");
+        setAccessStatus("active");
+        setAccessPeriodEnd(null);
+        setAccountFreeQuestionsUsed(0);
+        setAccessLoading(false);
+        setAccessError("");
+        setCheckoutError("");
       }
     });
 
@@ -529,6 +622,80 @@ function App() {
   }, [session?.user?.id]);
 
   useEffect(() => {
+    if (!supabase || !session?.user) {
+      setAccessLoading(false);
+      return;
+    }
+
+    const client = supabase;
+    const userId = session.user.id;
+    let cancelled = false;
+    setAccessLoading(true);
+    setAccessError("");
+
+    async function loadEntitlement() {
+      const { data, error } = await client
+        .from("account_entitlements")
+        .select("user_id, plan, status, free_questions_used, current_period_end")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (error) {
+        setAccessPlan("free");
+        setAccessStatus("active");
+        setAccessPeriodEnd(null);
+        setAccountFreeQuestionsUsed(0);
+        setAccessError(error.message);
+        setAccessLoading(false);
+        return;
+      }
+
+      if (!data) {
+        const { data: insertedRow, error: insertError } = await client
+          .from("account_entitlements")
+          .insert({ user_id: userId, plan: "free", status: "active" })
+          .select("user_id, plan, status, free_questions_used, current_period_end")
+          .single();
+
+        if (cancelled) return;
+
+        if (insertError) {
+          setAccessPlan("free");
+          setAccessStatus("active");
+          setAccessPeriodEnd(null);
+          setAccountFreeQuestionsUsed(0);
+          setAccessError(insertError.message);
+          setAccessLoading(false);
+          return;
+        }
+
+        const entitlement = normalizeEntitlement(insertedRow as AccountEntitlementRow);
+        setAccessPlan(entitlement.plan);
+        setAccessStatus(entitlement.status);
+        setAccountFreeQuestionsUsed(entitlement.free_questions_used);
+        setAccessPeriodEnd(entitlement.current_period_end);
+        setAccessLoading(false);
+        return;
+      }
+
+      const entitlement = normalizeEntitlement(data as AccountEntitlementRow);
+      setAccessPlan(entitlement.plan);
+      setAccessStatus(entitlement.status);
+      setAccountFreeQuestionsUsed(entitlement.free_questions_used);
+      setAccessPeriodEnd(entitlement.current_period_end);
+      setAccessLoading(false);
+    }
+
+    loadEntitlement();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id]);
+
+  useEffect(() => {
     if (!supabase || !session?.user || !remoteReady) return undefined;
 
     const client = supabase;
@@ -582,6 +749,66 @@ function App() {
   }, [profileState, session?.user?.id, remoteReady]);
 
   const stats = useMemo(() => buildStats(progress), [progress]);
+  const hasFullAccess = hasPaidAccess(accessPlan, accessStatus);
+  const freeQuestionsUsed =
+    isSupabaseConfigured && session ? accountFreeQuestionsUsed : progress.attempts.length;
+  const freeQuestionsRemaining = hasFullAccess
+    ? Number.POSITIVE_INFINITY
+    : Math.max(0, freeQuestionLimit - freeQuestionsUsed);
+
+  const startUpgrade = async () => {
+    setCheckoutError("");
+
+    if (stripePaymentLink) {
+      window.location.assign(stripePaymentLink);
+      return;
+    }
+
+    if (!supabase || !session) {
+      setCheckoutError("Sign in before upgrading.");
+      return;
+    }
+
+    setCheckoutLoading(true);
+    const { data, error } = await supabase.functions.invoke("create-checkout-session", {
+      body: {
+        successUrl: `${getAuthRedirectUrl()}?checkout=success`,
+        cancelUrl: `${getAuthRedirectUrl()}?checkout=cancelled`,
+      },
+    });
+    setCheckoutLoading(false);
+
+    if (error) {
+      setCheckoutError(
+        "Checkout is not connected yet. Add Stripe secrets and deploy the Supabase checkout function.",
+      );
+      return;
+    }
+
+    const checkoutUrl =
+      data && typeof data === "object" && "url" in data ? String(data.url) : "";
+    if (!checkoutUrl) {
+      setCheckoutError("Checkout did not return a payment link.");
+      return;
+    }
+
+    window.location.assign(checkoutUrl);
+  };
+
+  const accessState: AccessState = {
+    plan: accessPlan,
+    status: accessStatus,
+    periodEnd: accessPeriodEnd,
+    isLoading: accessLoading,
+    error: accessError,
+    hasFullAccess,
+    freeLimit: freeQuestionLimit,
+    used: freeQuestionsUsed,
+    remaining: freeQuestionsRemaining,
+    isCheckoutLoading: checkoutLoading,
+    checkoutError,
+    onUpgrade: startUpgrade,
+  };
 
   const setProgress = (updater: ProgressState | ((current: ProgressState) => ProgressState)) => {
     setProfileState((currentState) => ({
@@ -598,12 +825,35 @@ function App() {
     }));
   };
 
-  const recordAttempt = (
+  const consumeFreeQuestion = async () => {
+    if (hasFullAccess) return true;
+
+    if (freeQuestionsRemaining <= 0) return false;
+
+    if (supabase && session) {
+      const { data, error } = await supabase.rpc("consume_free_question");
+      if (error) {
+        setAccessError(error.message);
+        return false;
+      }
+
+      const result = parseFreeQuestionConsumption(data);
+      setAccountFreeQuestionsUsed(result.freeQuestionsUsed);
+      return result.allowed;
+    }
+
+    return progress.attempts.length < freeQuestionLimit;
+  };
+
+  const recordAttempt = async (
     question: Question,
     selectedIndex: number,
     confidence: number,
     examModel: ExamModelId = defaultExamModel,
   ) => {
+    const canRecord = await consumeFreeQuestion();
+    if (!canRecord) return false;
+
     setProgress((current) => ({
       ...current,
       attempts: [
@@ -620,6 +870,7 @@ function App() {
         },
       ],
     }));
+    return true;
   };
 
   const toggleBookmark = (questionId: string) => {
@@ -724,6 +975,7 @@ function App() {
             session={session}
             syncStatus={syncStatus}
             syncError={syncError}
+            access={accessState}
             onSignOut={signOut}
           />
         </div>
@@ -734,6 +986,7 @@ function App() {
           stats={stats}
           progress={progress}
           accountEmail={session?.user.email ?? ""}
+          access={accessState}
           setView={setView}
           resetProgress={resetProgress}
         />
@@ -741,11 +994,14 @@ function App() {
       {view === "practice" && (
         <PracticeView
           progress={progress}
+          access={accessState}
           recordAttempt={recordAttempt}
           toggleBookmark={toggleBookmark}
         />
       )}
-      {view === "simulation" && <SimulationView recordAttempt={recordAttempt} />}
+      {view === "simulation" && (
+        <SimulationView access={accessState} recordAttempt={recordAttempt} />
+      )}
       {view === "flashcards" && <FlashcardView />}
       {view === "planner" && (
         <PlannerView
@@ -1160,11 +1416,13 @@ function AccountStatus({
   session,
   syncStatus,
   syncError,
+  access,
   onSignOut,
 }: {
   session: Session | null;
   syncStatus: SyncStatus;
   syncError: string;
+  access: AccessState;
   onSignOut: () => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -1183,6 +1441,14 @@ function AccountStatus({
           ? "Sync issue"
           : "Synced";
   const email = session?.user.email ?? "";
+  const paidThrough = formatAccessDate(access.periodEnd);
+  const accessSummary = access.isLoading
+    ? "Checking access"
+    : access.hasFullAccess
+      ? paidThrough
+        ? `Full access through ${paidThrough}`
+        : "Full access"
+      : `${access.remaining} free left`;
 
   const handleAccountPasswordUpdate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1232,7 +1498,10 @@ function AccountStatus({
         <div>
           <span className={syncStatus === "error" ? "status-dot is-error" : "status-dot"} />
           <strong>{statusLabel}</strong>
-          <small>{syncError || email || "Progress is saved on this device"}</small>
+          <small>
+            {syncError ||
+              `${accessSummary} · ${email || "Progress is saved on this device"}`}
+          </small>
         </div>
         {session && (
           <button
@@ -1315,16 +1584,78 @@ function AccountStatus({
   );
 }
 
+function AccessBadge({ access }: { access: AccessState }) {
+  if (access.isLoading) {
+    return <span className="access-pill">Checking access</span>;
+  }
+
+  if (access.hasFullAccess) {
+    const paidThrough = formatAccessDate(access.periodEnd);
+    return (
+      <span className="access-pill is-paid">
+        {paidThrough ? `Full access through ${paidThrough}` : "Full access"}
+      </span>
+    );
+  }
+
+  return (
+    <span className="access-pill">
+      Free plan · {access.remaining}/{access.freeLimit} questions left
+    </span>
+  );
+}
+
+function UpgradePanel({
+  access,
+  title = "Unlock the full question bank",
+  detail = "Free accounts include 25 answered questions. Upgrade to keep practicing across all domains, study areas, simulations, rationales, and progress tracking.",
+  compact = false,
+}: {
+  access: AccessState;
+  title?: string;
+  detail?: string;
+  compact?: boolean;
+}) {
+  if (access.hasFullAccess) return null;
+
+  return (
+    <section className={compact ? "upgrade-panel is-compact" : "upgrade-panel"}>
+      <div>
+        <p className="eyebrow">Free access</p>
+        <h3>{title}</h3>
+        <p>{detail}</p>
+        {access.error && <p className="upgrade-note">{access.error}</p>}
+        {access.checkoutError && <p className="upgrade-note">{access.checkoutError}</p>}
+      </div>
+      <button
+        className="primary-action"
+        type="button"
+        onClick={access.onUpgrade}
+        disabled={access.isCheckoutLoading || access.isLoading}
+      >
+        <Trophy aria-hidden="true" size={18} />
+        {access.isLoading
+          ? "Checking access..."
+          : access.isCheckoutLoading
+            ? "Opening checkout..."
+            : "Upgrade for full access"}
+      </button>
+    </section>
+  );
+}
+
 function Dashboard({
   stats,
   progress,
   accountEmail,
+  access,
   setView,
   resetProgress,
 }: {
   stats: ReturnType<typeof buildStats>;
   progress: ProgressState;
   accountEmail: string;
+  access: AccessState;
   setView: (view: View) => void;
   resetProgress: () => void;
 }) {
@@ -1352,6 +1683,7 @@ function Dashboard({
             <span>2,500 original questions</span>
             <span>Dual ASWB blueprints</span>
             <span>Rationales and readiness tracking</span>
+            <AccessBadge access={access} />
           </div>
           <div className="hero-actions">
             <button className="primary-action" type="button" onClick={() => setView("practice")}>
@@ -1586,6 +1918,23 @@ function Dashboard({
               ? "Attempts, bookmarks, planner checks, and readiness history sync to the signed-in account."
               : "Attempts, bookmarks, planner checks, and readiness history are saved on this device."}
           </p>
+          {!access.hasFullAccess && (
+            <div className="free-meter" aria-label="Free practice questions remaining">
+              <div>
+                <span>{access.used}</span>
+                <small>used</small>
+              </div>
+              <div>
+                <span>{access.remaining}</span>
+                <small>free left</small>
+              </div>
+              <div>
+                <span>{access.freeLimit}</span>
+                <small>free limit</small>
+              </div>
+            </div>
+          )}
+          {!access.hasFullAccess && <UpgradePanel access={access} compact />}
           <button className="danger-action" type="button" onClick={resetProgress}>
             <RotateCcw aria-hidden="true" size={17} />
             Reset my progress
@@ -1690,16 +2039,18 @@ function AreaSelect({
 
 function PracticeView({
   progress,
+  access,
   recordAttempt,
   toggleBookmark,
 }: {
   progress: ProgressState;
+  access: AccessState;
   recordAttempt: (
     question: Question,
     selectedIndex: number,
     confidence: number,
     examModel?: ExamModelId,
-  ) => void;
+  ) => Promise<boolean>;
   toggleBookmark: (questionId: string) => void;
 }) {
   const [examModel, setExamModel] = useState<ExamModelId>(defaultExamModel);
@@ -1709,6 +2060,7 @@ function PracticeView({
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [confidence, setConfidence] = useState(3);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [practiceQueue, setPracticeQueue] = useState<Question[]>(() => shuffle(questions));
   const [sessionStats, setSessionStats] = useState({
     answered: 0,
@@ -1733,6 +2085,8 @@ function PracticeView({
   const isBookmarked = progress.bookmarks.includes(question.id);
   const currentQuestionNumber = (index % activeQuestions.length) + 1;
   const positionPercent = Math.round((currentQuestionNumber / activeQuestions.length) * 100);
+  const canAnswer = access.hasFullAccess || access.remaining > 0;
+  const canUseCurrentQuestion = canAnswer || revealed;
 
   useEffect(() => {
     setPracticeQueue(shuffle(filteredQuestions));
@@ -1775,15 +2129,19 @@ function PracticeView({
   };
 
   const submitAnswer = () => {
-    if (selectedIndex === null || revealed) return;
+    if (selectedIndex === null || revealed || !canAnswer || isSubmitting) return;
+    setIsSubmitting(true);
     const correct = selectedIndex === question.answerIndex;
-    recordAttempt(question, selectedIndex, confidence, examModel);
-    setSessionStats((current) => ({
-      answered: current.answered + 1,
-      correct: current.correct + (correct ? 1 : 0),
-      review: current.review + (correct ? 0 : 1),
-    }));
-    setRevealed(true);
+    recordAttempt(question, selectedIndex, confidence, examModel).then((wasRecorded) => {
+      setIsSubmitting(false);
+      if (!wasRecorded) return;
+      setSessionStats((current) => ({
+        answered: current.answered + 1,
+        correct: current.correct + (correct ? 1 : 0),
+        review: current.review + (correct ? 0 : 1),
+      }));
+      setRevealed(true);
+    });
   };
 
   const nextQuestion = () => {
@@ -1840,6 +2198,15 @@ function PracticeView({
         </div>
       </div>
 
+      {!access.hasFullAccess && (
+        <div className="access-banner">
+          <AccessBadge access={access} />
+          <span>
+            Free accounts can answer {access.freeLimit} questions before upgrading.
+          </span>
+        </div>
+      )}
+
       <div className="practice-progress-panel" aria-label="Practice progress">
         <div className="practice-position">
           <span>Current question</span>
@@ -1877,95 +2244,106 @@ function PracticeView({
 
       <div className="practice-layout">
         <article className="question-panel">
-          <div className="question-meta">
-            <span className="domain-chip" style={{ borderColor: domain.color }}>
-              {domain.name}
-            </span>
-            <span className="area-chip" title={area.name}>
-              {areaId} · {area.name}
-            </span>
-            <span>{question.skill}</span>
-            <span>{question.difficulty}</span>
-            <button
-              className="icon-action"
-              type="button"
-              aria-label={isBookmarked ? "Remove bookmark" : "Bookmark question"}
-              onClick={() => toggleBookmark(question.id)}
-            >
-              {isBookmarked ? <BookmarkCheck size={18} /> : <Bookmark size={18} />}
-            </button>
-          </div>
-
-          <h3>{question.stem}</h3>
-
-          <div className="option-list" role="radiogroup" aria-label="Answer options">
-            {question.options.map((option, optionIndex) => {
-              const isSelected = selectedIndex === optionIndex;
-              const isCorrect = question.answerIndex === optionIndex;
-              const stateClass = revealed
-                ? isCorrect
-                  ? "is-correct"
-                  : isSelected
-                    ? "is-wrong"
-                    : ""
-                : isSelected
-                  ? "is-picked"
-                  : "";
-
-              return (
-                <button
-                  key={option}
-                  className={`option-button ${stateClass}`}
-                  type="button"
-                  onClick={() => !revealed && setSelectedIndex(optionIndex)}
-                  aria-pressed={isSelected}
-                >
-                  <span>{String.fromCharCode(65 + optionIndex)}</span>
-                  <p>{option}</p>
-                  {revealed && isCorrect && <CheckCircle2 aria-hidden="true" size={18} />}
-                  {revealed && isSelected && !isCorrect && <XCircle aria-hidden="true" size={18} />}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="confidence-row">
-            <label htmlFor="confidence">Confidence</label>
-            <input
-              id="confidence"
-              min="1"
-              max="5"
-              step="1"
-              type="range"
-              value={confidence}
-              onChange={(event) => setConfidence(Number(event.target.value))}
-              disabled={revealed}
+          {!canUseCurrentQuestion ? (
+            <UpgradePanel
+              access={access}
+              title="You reached the free practice limit"
+              detail="You answered 25 free questions. Upgrade to continue with all 2,500 questions, focused study areas, simulations, and progress tracking."
             />
-            <strong>{confidence}/5</strong>
-          </div>
+          ) : (
+            <>
+              <div className="question-meta">
+                <span className="domain-chip" style={{ borderColor: domain.color }}>
+                  {domain.name}
+                </span>
+                <span className="area-chip" title={area.name}>
+                  {areaId} · {area.name}
+                </span>
+                <span>{question.skill}</span>
+                <span>{question.difficulty}</span>
+                <button
+                  className="icon-action"
+                  type="button"
+                  aria-label={isBookmarked ? "Remove bookmark" : "Bookmark question"}
+                  onClick={() => toggleBookmark(question.id)}
+                >
+                  {isBookmarked ? <BookmarkCheck size={18} /> : <Bookmark size={18} />}
+                </button>
+              </div>
 
-          {revealed && (
-            <div className="rationale-box">
-              <strong>{selectedIndex === question.answerIndex ? "Correct" : "Review this one"}</strong>
-              <p>{question.rationale}</p>
-              <p className="exam-lens">{question.examLens}</p>
-            </div>
+              <h3>{question.stem}</h3>
+
+              <div className="option-list" role="radiogroup" aria-label="Answer options">
+                {question.options.map((option, optionIndex) => {
+                  const isSelected = selectedIndex === optionIndex;
+                  const isCorrect = question.answerIndex === optionIndex;
+                  const stateClass = revealed
+                    ? isCorrect
+                      ? "is-correct"
+                      : isSelected
+                        ? "is-wrong"
+                        : ""
+                    : isSelected
+                      ? "is-picked"
+                      : "";
+
+                  return (
+                    <button
+                      key={option}
+                      className={`option-button ${stateClass}`}
+                      type="button"
+                      onClick={() => !revealed && canAnswer && setSelectedIndex(optionIndex)}
+                      aria-pressed={isSelected}
+                      disabled={!canAnswer && !revealed}
+                    >
+                      <span>{String.fromCharCode(65 + optionIndex)}</span>
+                      <p>{option}</p>
+                      {revealed && isCorrect && <CheckCircle2 aria-hidden="true" size={18} />}
+                      {revealed && isSelected && !isCorrect && <XCircle aria-hidden="true" size={18} />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="confidence-row">
+                <label htmlFor="confidence">Confidence</label>
+                <input
+                  id="confidence"
+                  min="1"
+                  max="5"
+                  step="1"
+                  type="range"
+                  value={confidence}
+                  onChange={(event) => setConfidence(Number(event.target.value))}
+                  disabled={revealed || !canAnswer}
+                />
+                <strong>{confidence}/5</strong>
+              </div>
+
+              {revealed && (
+                <div className="rationale-box">
+                  <strong>{selectedIndex === question.answerIndex ? "Correct" : "Review this one"}</strong>
+                  <p>{question.rationale}</p>
+                  <p className="exam-lens">{question.examLens}</p>
+                </div>
+              )}
+
+              <div className="question-actions">
+                <button
+                  className="primary-action"
+                  type="button"
+                  onClick={submitAnswer}
+                  disabled={selectedIndex === null || revealed || !canAnswer || isSubmitting}
+                >
+                  {isSubmitting ? "Saving..." : "Submit"}
+                </button>
+                <button className="secondary-action" type="button" onClick={nextQuestion}>
+                  {revealed ? "Next" : "Skip"}
+                  <ChevronRight aria-hidden="true" size={18} />
+                </button>
+              </div>
+            </>
           )}
-
-          <div className="question-actions">
-            <button
-              className="primary-action"
-              type="button"
-              onClick={submitAnswer}
-              disabled={selectedIndex === null || revealed}
-            >
-              Submit
-            </button>
-            <button className="secondary-action" type="button" onClick={nextQuestion}>
-              {revealed ? "Next" : "Skip"}
-              <ChevronRight aria-hidden="true" size={18} />
-            </button>
-          </div>
         </article>
 
         <aside className="panel lens-panel">
@@ -1985,14 +2363,16 @@ function PracticeView({
 }
 
 function SimulationView({
+  access,
   recordAttempt,
 }: {
+  access: AccessState;
   recordAttempt: (
     question: Question,
     selectedIndex: number,
     confidence: number,
     examModel?: ExamModelId,
-  ) => void;
+  ) => Promise<boolean>;
 }) {
   const [examModel, setExamModel] = useState<ExamModelId>(defaultExamModel);
   const [size, setSize] = useState(24);
@@ -2002,12 +2382,18 @@ function SimulationView({
   const [flagged, setFlagged] = useState<string[]>([]);
   const [index, setIndex] = useState(0);
   const [finished, setFinished] = useState(false);
+  const [isFinishing, setIsFinishing] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(0);
 
   const activeQuestion = simulationQuestions[index];
   const selectedIndex = activeQuestion ? answers[activeQuestion.id] : undefined;
   const selectedModel = examModels.find((model) => model.id === examModel)!;
   const simulationSizes = examModel === "2026" ? [12, 24, 60, 122] : [20, 50, 85, 170];
+  const availableSimulationSizes = simulationSizes.filter(
+    (option) => access.hasFullAccess || option <= access.remaining,
+  );
+  const selectedSizeAllowed = access.hasFullAccess || size <= access.remaining;
+  const canStartSimulation = !access.isLoading && (access.hasFullAccess || access.remaining > 0);
   const timerMinutes = Math.max(
     5,
     Math.round((size / selectedModel.questionCount) * selectedModel.timeLimitMinutes),
@@ -2020,6 +2406,13 @@ function SimulationView({
     setAreaFilter("all");
     setSize(nextModel === "2026" ? 24 : 50);
   };
+
+  useEffect(() => {
+    if (access.hasFullAccess) return;
+    const allowedSizes = simulationSizes.filter((option) => option <= access.remaining);
+    if (!allowedSizes.length) return;
+    if (!allowedSizes.includes(size)) setSize(allowedSizes[allowedSizes.length - 1]);
+  }, [access.hasFullAccess, access.remaining, examModel, size]);
 
   useEffect(() => {
     if (!simulationQuestions.length || finished) return undefined;
@@ -2038,20 +2431,30 @@ function SimulationView({
   }, [simulationQuestions.length, finished]);
 
   const startSimulation = () => {
+    if (!canStartSimulation || !selectedSizeAllowed) return;
     const nextQuestions = makeSimulation(size, areaFilter, examModel);
     setSimulationQuestions(nextQuestions);
     setAnswers({});
     setFlagged([]);
     setIndex(0);
     setFinished(false);
+    setIsFinishing(false);
     setSecondsLeft(timerMinutes * 60);
   };
 
-  const finishSimulation = () => {
-    simulationQuestions.forEach((question) => {
+  const finishSimulation = async () => {
+    if (isFinishing) return;
+    setIsFinishing(true);
+
+    for (const question of simulationQuestions) {
       const answer = answers[question.id];
-      if (answer !== undefined) recordAttempt(question, answer, 3, examModel);
-    });
+      if (answer !== undefined) {
+        const wasRecorded = await recordAttempt(question, answer, 3, examModel);
+        if (!wasRecorded) break;
+      }
+    }
+
+    setIsFinishing(false);
     setFinished(true);
   };
 
@@ -2073,6 +2476,16 @@ function SimulationView({
           </div>
         </div>
 
+        {!access.hasFullAccess && (
+          <div className="access-banner">
+            <AccessBadge access={access} />
+            <span>
+              Free accounts can answer {access.freeLimit} total questions. Timed sprints only
+              show lengths that fit your remaining free access.
+            </span>
+          </div>
+        )}
+
         <div className="sim-start">
           <section className="panel">
             <h3>Simulation length</h3>
@@ -2083,6 +2496,7 @@ function SimulationView({
                   key={option}
                   type="button"
                   className={size === option ? "is-selected" : ""}
+                  disabled={!access.hasFullAccess && option > access.remaining}
                   onClick={() => setSize(option)}
                 >
                   <strong>{option}</strong>
@@ -2098,7 +2512,19 @@ function SimulationView({
                 onChange={setAreaFilter}
               />
             </div>
-            <button className="primary-action" type="button" onClick={startSimulation}>
+            {!access.hasFullAccess && !availableSimulationSizes.length && (
+              <UpgradePanel
+                access={access}
+                title="Timed simulations need an upgrade"
+                detail="Your remaining free questions are below the shortest simulation. Use Practice for the last free questions, or upgrade for every timed sprint."
+              />
+            )}
+            <button
+              className="primary-action"
+              type="button"
+              onClick={startSimulation}
+              disabled={!canStartSimulation || !selectedSizeAllowed}
+            >
               <Play aria-hidden="true" size={18} />
               Start simulation
             </button>
@@ -2142,7 +2568,12 @@ function SimulationView({
             {flagged.length} flagged.
           </p>
           <div className="hero-actions">
-            <button className="primary-action" type="button" onClick={startSimulation}>
+            <button
+              className="primary-action"
+              type="button"
+              onClick={startSimulation}
+              disabled={!canStartSimulation || !selectedSizeAllowed}
+            >
               Run again
             </button>
             <button className="secondary-action" type="button" onClick={() => setSimulationQuestions([])}>
@@ -2196,8 +2627,13 @@ function SimulationView({
           <span>{answeredCount} answered</span>
           <span>{flagged.length} flagged</span>
         </div>
-        <button className="primary-action" type="button" onClick={finishSimulation}>
-          Finish
+        <button
+          className="primary-action"
+          type="button"
+          onClick={finishSimulation}
+          disabled={isFinishing}
+        >
+          {isFinishing ? "Saving..." : "Finish"}
         </button>
       </div>
 

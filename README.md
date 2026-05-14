@@ -36,9 +36,49 @@ from the Supabase SQL editor or Supabase CLI. The migration creates a `learner_p
 table with Row Level Security so each authenticated user can only access their own learner
 profiles and saved progress.
 
+Run `supabase/migrations/202605140002_create_account_entitlements.sql` as well to enable
+free and paid access. New accounts start on the free plan and can answer 25 questions. Paid
+access is stored in `account_entitlements`, and only the backend service role can promote an
+account to paid.
+
 In Supabase Auth settings, set the site URL and redirect URLs to the app URL you are using,
 for example `http://127.0.0.1:5173/` locally and the production URL after deployment. Email
 confirmation and password reset links use those URLs to return students to the app.
+
+## Payments
+
+The app supports Stripe Checkout through Supabase Edge Functions:
+
+- `supabase/functions/create-checkout-session` creates a Stripe Checkout Session for the
+  signed-in user.
+- `supabase/functions/stripe-webhook` verifies Stripe webhook signatures and updates the
+  user's entitlement after checkout or subscription changes.
+
+Set these Supabase Edge Function secrets before deploying the functions:
+
+```bash
+supabase secrets set \
+  SITE_URL=https://idrissenayat.github.io/ASWB-Clinical-Prep-Studio/ \
+  STRIPE_SECRET_KEY=sk_test_... \
+  STRIPE_PRICE_ID=price_... \
+  STRIPE_WEBHOOK_SECRET=whsec_... \
+  SUPABASE_SERVICE_ROLE_KEY=...
+```
+
+Then deploy:
+
+```bash
+supabase functions deploy create-checkout-session
+supabase functions deploy stripe-webhook
+```
+
+For a quick manual payment-link test, set `VITE_STRIPE_PAYMENT_LINK` in GitHub Pages secrets.
+That redirects users to Stripe, but the secure entitlement change should still happen through
+the webhook or an admin update.
+
+Note: the current GitHub Pages build still ships the question bank in the frontend bundle, so
+this is a product access gate for normal app use. A stronger content paywall would move question
+delivery into Supabase functions that only return full-bank questions to paid users.
 
 ## Features
 
@@ -46,6 +86,7 @@ confirmation and password reset links use those URLs to return students to the a
 - Dashboard knowledge map by domain and study area
 - 2,500 original exam-style Clinical practice questions with rationales
 - Switch between testing on/after August 3, 2026 and testing before August 3, 2026
+- Free account access for the first 25 answered questions, with a paid upgrade path for the full bank
 - Focused practice by 2026 exam area or pre-2026 Clinical study area, including IA through IVC
 - Timed simulation sprints using the selected ASWB model's question count and pacing
 - The 2,500-question practice bank is mapped to both the 2026 blueprint and the 2018 pre-transition outline

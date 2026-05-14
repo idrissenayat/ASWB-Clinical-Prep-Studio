@@ -1054,7 +1054,7 @@ function App() {
       {view === "simulation" && (
         <SimulationView access={accessState} recordAttempt={recordAttempt} />
       )}
-      {view === "flashcards" && <FlashcardView />}
+      {view === "flashcards" && <FlashcardView access={accessState} setView={setView} />}
       {view === "planner" && (
         <PlannerView
           progress={progress}
@@ -2853,7 +2853,13 @@ function SimulationView({
   );
 }
 
-function FlashcardView() {
+function FlashcardView({
+  access,
+  setView,
+}: {
+  access: AccessState;
+  setView: (view: View) => void;
+}) {
   const [domainFilter, setDomainFilter] = useState<DomainId | "all">("all");
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -2876,6 +2882,43 @@ function FlashcardView() {
     setIndex((current) => (current + 1) % filteredCards.length);
     setFlipped(false);
   };
+
+  if (!access.hasFullAccess) {
+    return (
+      <section className="view-stack">
+        <div className="section-heading wide">
+          <div>
+            <p className="eyebrow">Flashcards</p>
+            <h2>Full access study mode</h2>
+          </div>
+          <AccessBadge access={access} />
+        </div>
+
+        <UpgradePanel
+          access={access}
+          title="Unlock flashcards"
+          detail={
+            access.isExpired
+              ? `Your ${paidAccessDays}-day access ended. Purchase again to use flashcards and resume full-bank study.`
+              : `Flashcards are included with full access. Free accounts can answer ${access.freeLimit} sample questions in Practice and Simulation; unlock all study modes and 2,500 questions for ${paidAccessDays} days.`
+          }
+        />
+
+        {!access.isExpired && access.remaining > 0 && (
+          <section className="panel planner-cta">
+            <div>
+              <p className="eyebrow">Free sample</p>
+              <h3>{access.remaining} sample questions remaining</h3>
+            </div>
+            <button className="primary-action" type="button" onClick={() => setView("practice")}>
+              Go to practice
+              <ChevronRight aria-hidden="true" size={18} />
+            </button>
+          </section>
+        )}
+      </section>
+    );
+  }
 
   return (
     <section className="view-stack">

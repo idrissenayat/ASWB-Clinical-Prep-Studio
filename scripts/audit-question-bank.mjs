@@ -7,13 +7,76 @@ import path from "node:path";
 const root = process.cwd();
 const outDir = mkdtempSync(path.join(tmpdir(), "aswb-question-audit-"));
 const tsc = path.join(root, "node_modules", ".bin", "tsc");
+const defaultSupabaseUrl = "https://jqoqjkgzfoztwumzylih.supabase.co";
+
+function normalizeQuestion(row) {
+  return {
+    id: row.id,
+    domain: row.domain,
+    area: row.area,
+    area2026: row.area_2026,
+    skill: row.skill,
+    difficulty: row.difficulty,
+    stem: row.stem,
+    options: row.options,
+    answerIndex: row.answer_index,
+    rationale: row.rationale,
+    examLens: row.exam_lens,
+    isFreeSample: row.is_free_sample === true,
+  };
+}
+
+async function fetchAllQuestions(supabaseUrl, serviceRoleKey) {
+  const pageSize = 1000;
+  const rows = [];
+  let from = 0;
+
+  while (true) {
+    const url = new URL("/rest/v1/question_bank", supabaseUrl);
+    url.searchParams.set(
+      "select",
+      "id,domain,area,area_2026,skill,difficulty,stem,options,answer_index,rationale,exam_lens,is_free_sample",
+    );
+    url.searchParams.set("order", "id.asc");
+
+    const response = await fetch(url, {
+      headers: {
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+        Range: `${from}-${from + pageSize - 1}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Supabase question audit failed: ${response.status} ${await response.text()}`);
+    }
+
+    const page = await response.json();
+    rows.push(...page);
+    if (page.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return rows.map(normalizeQuestion);
+}
+
+function emptyCounts(keys) {
+  return Object.fromEntries(keys.map((key) => [key, 0]));
+}
+
+function compareCounts(label, actual, expected, issues) {
+  for (const [key, expectedCount] of Object.entries(expected)) {
+    if ((actual[key] ?? 0) !== expectedCount) {
+      issues.push(`${label}.${key}: expected ${expectedCount}, got ${actual[key] ?? 0}`);
+    }
+  }
+}
 
 try {
   execFileSync(
     tsc,
     [
       "src/data/exam.ts",
-      "src/data/generatedQuestions.ts",
       "--outDir",
       outDir,
       "--module",
@@ -30,10 +93,46 @@ try {
   );
 
   const requireAuditModule = createRequire(path.join(outDir, "audit.cjs"));
-  const { questions, curatedQuestions, domains, examAreasByModel, examModels } =
-    requireAuditModule(path.join(outDir, "exam.js"));
-  const { generatedQuestions } = requireAuditModule(path.join(outDir, "generatedQuestions.js"));
+  const {
+    domains,
+    examAreasByModel,
+    examModels,
+    freeQuestionCountsByArea,
+    questionBankTotal,
+    questionCountsByArea,
+    questionCountsByDomain,
+  } = requireAuditModule(path.join(outDir, "exam.js"));
 
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseUrl =
+    process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || defaultSupabaseUrl;
+
+  if (!serviceRoleKey) {
+    console.log(
+      JSON.stringify(
+        {
+          total: questionBankTotal,
+          examModels,
+          byDomain: questionCountsByDomain,
+          byArea2026: questionCountsByArea["2026"],
+          byAreaPre2026: questionCountsByArea.pre2026,
+          freeByArea2026: freeQuestionCountsByArea["2026"],
+          freeByAreaPre2026: freeQuestionCountsByArea.pre2026,
+          issueCount: 0,
+          issues: [],
+          note:
+            "Question content is stored in Supabase. Set SUPABASE_SERVICE_ROLE_KEY to audit private question rows.",
+        },
+        null,
+        2,
+      ),
+    );
+    process.exit(0);
+  }
+
+  const questions = await fetchAllQuestions(supabaseUrl, serviceRoleKey);
+  const all2026AreaIds = examAreasByModel["2026"].map((area) => area.id);
+  const allPre2026AreaIds = examAreasByModel.pre2026.map((area) => area.id);
   const areaIds = new Map(
     Object.entries(examAreasByModel).map(([model, areas]) => [
       model,
@@ -49,14 +148,18 @@ try {
   const issues = [];
   const seenIds = new Map();
   const seenStems = new Map();
-  const byDomain = Object.fromEntries(domains.map((domain) => [domain.id, 0]));
-  const byArea2026 = Object.fromEntries(examAreasByModel["2026"].map((area) => [area.id, 0]));
-  const byAreaPre2026 = Object.fromEntries(
-    examAreasByModel.pre2026.map((area) => [area.id, 0]),
-  );
+  const byDomain = emptyCounts(domains.map((domain) => domain.id));
+  const byArea2026 = emptyCounts(all2026AreaIds);
+  const byAreaPre2026 = emptyCounts(allPre2026AreaIds);
+  const freeByArea2026 = emptyCounts(all2026AreaIds);
+  const freeByAreaPre2026 = emptyCounts(allPre2026AreaIds);
   const bySkill = {};
   const byDifficulty = {};
   const optionCounts = {};
+
+  if (questions.length !== questionBankTotal) {
+    issues.push(`total: expected ${questionBankTotal}, got ${questions.length}`);
+  }
 
   for (const question of questions) {
     byDomain[question.domain] = (byDomain[question.domain] ?? 0) + 1;
@@ -64,7 +167,12 @@ try {
     byAreaPre2026[question.area] = (byAreaPre2026[question.area] ?? 0) + 1;
     bySkill[question.skill] = (bySkill[question.skill] ?? 0) + 1;
     byDifficulty[question.difficulty] = (byDifficulty[question.difficulty] ?? 0) + 1;
-    optionCounts[question.options.length] = (optionCounts[question.options.length] ?? 0) + 1;
+    optionCounts[question.options?.length] = (optionCounts[question.options?.length] ?? 0) + 1;
+
+    if (question.isFreeSample) {
+      freeByArea2026[question.area2026] = (freeByArea2026[question.area2026] ?? 0) + 1;
+      freeByAreaPre2026[question.area] = (freeByAreaPre2026[question.area] ?? 0) + 1;
+    }
 
     if (seenIds.has(question.id)) {
       issues.push(`${question.id}: duplicate id with ${seenIds.get(question.id)}`);
@@ -72,7 +180,7 @@ try {
       seenIds.set(question.id, question.id);
     }
 
-    const normalizedStem = question.stem.toLowerCase().replace(/\s+/g, " ").trim();
+    const normalizedStem = String(question.stem ?? "").toLowerCase().replace(/\s+/g, " ").trim();
     if (seenStems.has(normalizedStem)) {
       issues.push(`${question.id}: duplicate stem with ${seenStems.get(normalizedStem)}`);
     } else {
@@ -80,7 +188,7 @@ try {
     }
 
     if (!question.stem?.trim()) issues.push(`${question.id}: blank stem`);
-    if (!question.stem.trim().endsWith("?")) {
+    if (!question.stem?.trim().endsWith("?")) {
       issues.push(`${question.id}: stem does not end with ?`);
     }
     if (!question.rationale?.trim()) issues.push(`${question.id}: blank rationale`);
@@ -96,7 +204,9 @@ try {
       issues.push(`${question.id}: answerIndex out of range`);
     }
 
-    const uniqueOptions = new Set(question.options.map((option) => option.trim().toLowerCase()));
+    const uniqueOptions = new Set(
+      (question.options ?? []).map((option) => String(option).trim().toLowerCase()),
+    );
     if (uniqueOptions.size !== question.options.length) {
       issues.push(`${question.id}: duplicate option text`);
     }
@@ -114,14 +224,20 @@ try {
     }
   }
 
+  compareCounts("byDomain", byDomain, questionCountsByDomain, issues);
+  compareCounts("byArea2026", byArea2026, questionCountsByArea["2026"], issues);
+  compareCounts("byAreaPre2026", byAreaPre2026, questionCountsByArea.pre2026, issues);
+  compareCounts("freeByArea2026", freeByArea2026, freeQuestionCountsByArea["2026"], issues);
+  compareCounts("freeByAreaPre2026", freeByAreaPre2026, freeQuestionCountsByArea.pre2026, issues);
+
   const report = {
     total: questions.length,
-    curated: curatedQuestions.length,
-    generated: generatedQuestions.length,
     examModels,
     byDomain,
     byArea2026,
     byAreaPre2026,
+    freeByArea2026,
+    freeByAreaPre2026,
     bySkill,
     byDifficulty,
     optionCounts,

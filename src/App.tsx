@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
@@ -35,14 +35,17 @@ import {
   DomainId,
   ExamAreaId,
   ExamModelId,
+  Flashcard,
   Question,
   domains,
   examAreasByModel,
   examFacts,
   examModels,
-  flashcards,
+  freeQuestionCountsByArea,
   planTasks,
-  questions,
+  questionBankTotal,
+  questionCountsByArea,
+  questionCountsByDomain,
 } from "./data/exam";
 import {
   isAccountAccessRequired,
@@ -109,6 +112,25 @@ interface AccessState {
   onUpgrade: () => void;
 }
 
+type StudyContentMode = "count" | "practice" | "simulation" | "flashcards";
+
+interface StudyContentRequest {
+  mode: StudyContentMode;
+  examModel?: ExamModelId;
+  domainFilter?: DomainId | "all";
+  areaFilter?: AreaFilter;
+  size?: number;
+  limit?: number;
+}
+
+interface StudyContentResponse {
+  questions?: Question[];
+  flashcards?: Flashcard[];
+  availableCount?: number;
+  isLocked?: boolean;
+  error?: string;
+}
+
 type SyncStatus = "local" | "loading" | "synced" | "saving" | "error";
 type AuthMode = "sign-in" | "sign-up" | "reset-password";
 type AccessPlan = "free" | "paid";
@@ -137,7 +159,6 @@ const navItems: Array<{ id: View; label: string; icon: typeof BarChart3 }> = [
 ];
 
 const domainMap = new Map(domains.map((domain) => [domain.id, domain]));
-const questionMap = new Map(questions.map((question) => [question.id, question]));
 const areaKey = (examModel: ExamModelId, areaId: ExamAreaId) => `${examModel}:${areaId}`;
 const getQuestionArea = (question: Question, examModel: ExamModelId) =>
   examModel === "2026" ? question.area2026 : question.area;
@@ -150,19 +171,25 @@ const examAreaCounts = new Map(
   examModels.flatMap((model) =>
     examAreasByModel[model.id].map((area) => [
       areaKey(model.id, area.id),
-      questions.filter((question) => getQuestionArea(question, model.id) === area.id).length,
+      questionCountsByArea[model.id][area.id] ?? 0,
     ] as const),
   ),
 );
 
-const freeSampleQuestions = domains
-  .flatMap((domain) =>
-    questions.filter((question) => question.domain === domain.id).slice(0, freeQuestionLimit / domains.length),
-  )
-  .slice(0, freeQuestionLimit);
+const getAreaQuestionCount = (examModel: ExamModelId, areaId: ExamAreaId, hasFullAccess: boolean) =>
+  (hasFullAccess ? questionCountsByArea : freeQuestionCountsByArea)[examModel][areaId] ?? 0;
 
-function shuffle<T>(items: T[]) {
-  return [...items].sort(() => Math.random() - 0.5);
+function getFilterQuestionCount(
+  examModel: ExamModelId,
+  domainFilter: DomainId | "all",
+  areaFilter: AreaFilter,
+  hasFullAccess: boolean,
+) {
+  if (areaFilter !== "all") return getAreaQuestionCount(examModel, areaFilter, hasFullAccess);
+
+  return examAreasByModel[examModel]
+    .filter((area) => domainFilter === "all" || area.domain === domainFilter)
+    .reduce((sum, area) => sum + getAreaQuestionCount(examModel, area.id, hasFullAccess), 0);
 }
 
 function normalizeProgress(value: unknown): ProgressState {
@@ -400,15 +427,14 @@ function buildStats(progress: ProgressState) {
   const correctAttempts = progress.attempts.filter((attempt) => attempt.correct).length;
   const overallAccuracy = totalAttempts ? Math.round((correctAttempts / totalAttempts) * 100) : 0;
   const uniqueAnswered = new Set(progress.attempts.map((attempt) => attempt.questionId)).size;
-  const coverage = Math.round((uniqueAnswered / questions.length) * 100);
+  const coverage = Math.round((uniqueAnswered / questionBankTotal) * 100);
 
   const domainStats = domains.map((domain) => {
-    const domainQuestions = questions.filter((question) => question.domain === domain.id);
     const attempts = progress.attempts.filter((attempt) => attempt.domain === domain.id);
     const correct = attempts.filter((attempt) => attempt.correct).length;
     const unique = new Set(attempts.map((attempt) => attempt.questionId)).size;
     const accuracy = attempts.length ? Math.round((correct / attempts.length) * 100) : 0;
-    const domainCoverage = Math.round((unique / domainQuestions.length) * 100);
+    const domainCoverage = Math.round((unique / questionCountsByDomain[domain.id]) * 100);
     const readiness = Math.round(accuracy * 0.7 + domainCoverage * 0.3);
 
     return {
@@ -428,9 +454,7 @@ function buildStats(progress: ProgressState) {
   const recentMisses = [...progress.attempts]
     .reverse()
     .filter((attempt) => !attempt.correct)
-    .slice(0, 5)
-    .map((attempt) => questions.find((question) => question.id === attempt.questionId))
-    .filter(Boolean) as Question[];
+    .slice(0, 5);
 
   return {
     totalAttempts,
@@ -447,28 +471,20 @@ function buildStats(progress: ProgressState) {
 function buildAreaStats(progress: ProgressState, examModel: ExamModelId) {
   return examAreasByModel[examModel].map((area) => {
     const domain = domainMap.get(area.domain)!;
-    const areaQuestions = questions.filter((question) => getQuestionArea(question, examModel) === area.id);
-    const attempts = progress.attempts.filter((attempt) => {
-      const question = questionMap.get(attempt.questionId);
-      if (!question) return attempt.examModel === examModel && attempt.area === area.id;
-      return getQuestionArea(question, examModel) === area.id;
-    });
+    const questionCount = questionCountsByArea[examModel][area.id] ?? 0;
+    const attempts = progress.attempts.filter(
+      (attempt) => attempt.examModel === examModel && attempt.area === area.id,
+    );
     const correct = attempts.filter((attempt) => attempt.correct).length;
-    const unique = new Set(
-      attempts
-        .map((attempt) => questionMap.get(attempt.questionId))
-        .filter((question): question is Question => Boolean(question))
-        .filter((question) => getQuestionArea(question, examModel) === area.id)
-        .map((question) => question.id),
-    ).size;
+    const unique = new Set(attempts.map((attempt) => attempt.questionId)).size;
     const accuracy = attempts.length ? Math.round((correct / attempts.length) * 100) : 0;
-    const coverage = areaQuestions.length ? Math.round((unique / areaQuestions.length) * 100) : 0;
+    const coverage = questionCount ? Math.round((unique / questionCount) * 100) : 0;
     const readiness = Math.round(accuracy * 0.7 + coverage * 0.3);
 
     return {
       area,
       domain,
-      questionCount: areaQuestions.length,
+      questionCount,
       attempts: attempts.length,
       correct,
       unique,
@@ -477,65 +493,6 @@ function buildAreaStats(progress: ProgressState, examModel: ExamModelId) {
       readiness,
     };
   });
-}
-
-function balanceQuotas<T extends { count: number }>(quotas: T[], size: number) {
-  while (quotas.reduce((sum, item) => sum + item.count, 0) > size) {
-    const largest = quotas.reduce((best, item) => (item.count > best.count ? item : best), quotas[0]);
-    largest.count -= 1;
-  }
-
-  while (quotas.reduce((sum, item) => sum + item.count, 0) < size) {
-    const smallest = quotas.reduce((best, item) => (item.count < best.count ? item : best), quotas[0]);
-    smallest.count += 1;
-  }
-
-  return quotas;
-}
-
-function makeSimulation(
-  size: number,
-  areaFilter: AreaFilter = "all",
-  examModel: ExamModelId = defaultExamModel,
-  questionPool: Question[] = questions,
-) {
-  if (areaFilter !== "all") {
-    return shuffle(
-      questionPool.filter((question) => getQuestionArea(question, examModel) === areaFilter),
-    ).slice(0, size);
-  }
-
-  if (examModel === "pre2026") {
-    const legacyQuotas = balanceQuotas(
-      [
-        { areaIds: ["IA", "IB", "IC"] as ExamAreaId[], percent: 24, count: Math.max(1, Math.round(size * 0.24)) },
-        { areaIds: ["IIA", "IIB", "IIC"] as ExamAreaId[], percent: 30, count: Math.max(1, Math.round(size * 0.3)) },
-        { areaIds: ["IIIA", "IIIB", "IIIC", "IIID"] as ExamAreaId[], percent: 27, count: Math.max(1, Math.round(size * 0.27)) },
-        { areaIds: ["IVA", "IVB", "IVC"] as ExamAreaId[], percent: 19, count: Math.max(1, Math.round(size * 0.19)) },
-      ],
-      size,
-    );
-
-    return shuffle(
-      legacyQuotas.flatMap(({ areaIds, count }) =>
-        shuffle(questionPool.filter((question) => areaIds.includes(question.area))).slice(0, count),
-      ),
-    );
-  }
-
-  const quotas = balanceQuotas(
-    domains.map((domain) => ({
-      domain,
-      count: Math.max(1, Math.round(size * (domain.percent / 100))),
-    })),
-    size,
-  );
-
-  return shuffle(
-    quotas.flatMap(({ domain, count }) =>
-      shuffle(questionPool.filter((question) => question.domain === domain.id)).slice(0, count),
-    ),
-  );
 }
 
 function App() {
@@ -832,6 +789,37 @@ function App() {
     window.location.assign(checkoutUrl);
   };
 
+  const loadStudyContent = useCallback(
+    async (request: StudyContentRequest): Promise<StudyContentResponse> => {
+      if (!supabase || !session) {
+        return {
+          questions: [],
+          flashcards: [],
+          availableCount: 0,
+          isLocked: true,
+          error: "Sign in before studying.",
+        };
+      }
+
+      const { data, error } = await supabase.functions.invoke("secure-study-content", {
+        body: request,
+      });
+
+      if (error) {
+        return {
+          questions: [],
+          flashcards: [],
+          availableCount: 0,
+          isLocked: true,
+          error: error.message,
+        };
+      }
+
+      return (data ?? {}) as StudyContentResponse;
+    },
+    [session?.user?.id],
+  );
+
   const accessState: AccessState = {
     plan: accessPlan,
     status: accessStatus,
@@ -1047,14 +1035,25 @@ function App() {
         <PracticeView
           progress={progress}
           access={accessState}
+          loadStudyContent={loadStudyContent}
           recordAttempt={recordAttempt}
           toggleBookmark={toggleBookmark}
         />
       )}
       {view === "simulation" && (
-        <SimulationView access={accessState} recordAttempt={recordAttempt} />
+        <SimulationView
+          access={accessState}
+          loadStudyContent={loadStudyContent}
+          recordAttempt={recordAttempt}
+        />
       )}
-      {view === "flashcards" && <FlashcardView access={accessState} setView={setView} />}
+      {view === "flashcards" && (
+        <FlashcardView
+          access={accessState}
+          loadStudyContent={loadStudyContent}
+          setView={setView}
+        />
+      )}
       {view === "planner" && (
         <PlannerView
           progress={progress}
@@ -1820,7 +1819,7 @@ function Dashboard({
       <div className="stat-grid" aria-label="Progress summary">
         <MetricCard icon={Trophy} label="Readiness" value={`${stats.readiness}%`} detail="Practice-weighted" />
         <MetricCard icon={Target} label="Accuracy" value={`${stats.overallAccuracy}%`} detail={`${stats.totalAttempts} attempts`} />
-        <MetricCard icon={ClipboardCheck} label="Coverage" value={`${stats.coverage}%`} detail={`${stats.uniqueAnswered}/${questions.length} questions`} />
+        <MetricCard icon={ClipboardCheck} label="Coverage" value={`${stats.coverage}%`} detail={`${stats.uniqueAnswered}/${questionBankTotal} questions`} />
         <MetricCard
           icon={CalendarDays}
           label="Target"
@@ -1962,7 +1961,7 @@ function Dashboard({
             </div>
             <div>
               <dt>Practice bank</dt>
-              <dd>{questions.length} original questions mapped to both blueprints</dd>
+              <dd>{questionBankTotal} original questions mapped to both blueprints</dd>
             </div>
             <div>
               <dt>Question style</dt>
@@ -1996,15 +1995,28 @@ function Dashboard({
           </div>
           {stats.recentMisses.length ? (
             <div className="miss-list">
-              {stats.recentMisses.map((question) => (
-                <article key={question.id} className="miss-item">
-                  <span style={{ backgroundColor: domainMap.get(question.domain)?.color }} />
-                  <div>
-                    <strong>{domainMap.get(question.domain)?.shortName}</strong>
-                    <p>{question.stem}</p>
-                  </div>
-                </article>
-              ))}
+              {stats.recentMisses.map((attempt) => {
+                const attemptDomain = domainMap.get(attempt.domain);
+                const attemptArea =
+                  attempt.examModel && attempt.area
+                    ? examAreaMap.get(areaKey(attempt.examModel, attempt.area))
+                    : null;
+
+                return (
+                  <article key={`${attempt.questionId}-${attempt.timestamp}`} className="miss-item">
+                    <span style={{ backgroundColor: attemptDomain?.color }} />
+                    <div>
+                      <strong>{attemptDomain?.shortName}</strong>
+                      <p>
+                        {attemptArea
+                          ? `${attempt.area} · ${attemptArea.name}`
+                          : "Mixed practice"}{" "}
+                        · Question {attempt.questionId}
+                      </p>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           ) : (
             <div className="empty-state">
@@ -2103,7 +2115,7 @@ function ExamModelSelector({
           >
             <strong>{model.label}</strong>
             <span>{model.questionCount}-question exam format</span>
-            <small>{questions.length}-question practice bank</small>
+            <small>{questionBankTotal}-question practice bank</small>
           </button>
         ))}
       </div>
@@ -2155,11 +2167,13 @@ function AreaSelect({
 function PracticeView({
   progress,
   access,
+  loadStudyContent,
   recordAttempt,
   toggleBookmark,
 }: {
   progress: ProgressState;
   access: AccessState;
+  loadStudyContent: (request: StudyContentRequest) => Promise<StudyContentResponse>;
   recordAttempt: (
     question: Question,
     selectedIndex: number,
@@ -2176,24 +2190,16 @@ function PracticeView({
   const [revealed, setRevealed] = useState(false);
   const [confidence, setConfidence] = useState(3);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [practiceQueue, setPracticeQueue] = useState<Question[]>(() => shuffle(questions));
+  const [practiceQueue, setPracticeQueue] = useState<Question[]>([]);
+  const [contentLoading, setContentLoading] = useState(false);
+  const [contentError, setContentError] = useState("");
   const [sessionStats, setSessionStats] = useState({
     answered: 0,
     correct: 0,
     review: 0,
   });
-  const questionPool = access.hasFullAccess ? questions : freeSampleQuestions;
 
-  const filteredQuestions = useMemo(() => {
-    return questionPool.filter((question) => {
-      const matchesDomain = domainFilter === "all" || question.domain === domainFilter;
-      const matchesArea =
-        areaFilter === "all" || getQuestionArea(question, examModel) === areaFilter;
-      return matchesDomain && matchesArea;
-    });
-  }, [areaFilter, domainFilter, examModel, questionPool]);
-
-  const activeQuestions = practiceQueue.length ? practiceQueue : filteredQuestions;
+  const activeQuestions = practiceQueue;
   const question = activeQuestions.length ? activeQuestions[index % activeQuestions.length] : null;
   const domain = question ? domainMap.get(question.domain)! : null;
   const areaId = question ? getQuestionArea(question, examModel) : null;
@@ -2206,20 +2212,65 @@ function PracticeView({
   const canAnswer = access.hasFullAccess || (!access.isExpired && access.remaining > 0);
   const canUseCurrentQuestion = Boolean(question) && (canAnswer || revealed);
 
-  useEffect(() => {
-    setPracticeQueue(shuffle(filteredQuestions));
-    setIndex(0);
-    setSelectedIndex(null);
-    setRevealed(false);
-    setConfidence(3);
-    setSessionStats({ answered: 0, correct: 0, review: 0 });
-  }, [filteredQuestions]);
-
   const resetQuestionState = () => {
     setSelectedIndex(null);
     setRevealed(false);
     setConfidence(3);
   };
+
+  const loadPracticeSet = useCallback(
+    async (resetSession = true) => {
+      setContentLoading(true);
+      setContentError("");
+
+      const response = await loadStudyContent({
+        mode: "practice",
+        examModel,
+        domainFilter,
+        areaFilter,
+        limit: 75,
+      });
+
+      setPracticeQueue(response.questions ?? []);
+      setIndex(0);
+      resetQuestionState();
+      if (resetSession) setSessionStats({ answered: 0, correct: 0, review: 0 });
+      setContentError(response.error ?? "");
+      setContentLoading(false);
+    },
+    [areaFilter, domainFilter, examModel, loadStudyContent],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadInitialPracticeSet() {
+      setContentLoading(true);
+      setContentError("");
+
+      const response = await loadStudyContent({
+        mode: "practice",
+        examModel,
+        domainFilter,
+        areaFilter,
+        limit: 75,
+      });
+
+      if (cancelled) return;
+      setPracticeQueue(response.questions ?? []);
+      setIndex(0);
+      resetQuestionState();
+      setSessionStats({ answered: 0, correct: 0, review: 0 });
+      setContentError(response.error ?? "");
+      setContentLoading(false);
+    }
+
+    loadInitialPracticeSet();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [areaFilter, domainFilter, examModel, loadStudyContent, access.hasFullAccess, access.isExpired]);
 
   const changeFilter = (domainId: DomainId | "all") => {
     setDomainFilter(domainId);
@@ -2240,10 +2291,7 @@ function PracticeView({
   };
 
   const startNewPracticeSet = () => {
-    setPracticeQueue(shuffle(filteredQuestions));
-    setIndex(0);
-    setSessionStats({ answered: 0, correct: 0, review: 0 });
-    resetQuestionState();
+    void loadPracticeSet(true);
   };
 
   const submitAnswer = () => {
@@ -2264,12 +2312,11 @@ function PracticeView({
 
   const nextQuestion = () => {
     if (currentQuestionNumber >= activeQuestions.length) {
-      setPracticeQueue(shuffle(filteredQuestions));
-      setIndex(0);
+      void loadPracticeSet(false);
     } else {
       setIndex((current) => current + 1);
+      resetQuestionState();
     }
-    resetQuestionState();
   };
 
   return (
@@ -2353,6 +2400,7 @@ function PracticeView({
           className="mini-reset"
           type="button"
           onClick={startNewPracticeSet}
+          disabled={contentLoading}
           aria-label="Start a new shuffled practice set"
         >
           <RotateCcw aria-hidden="true" size={16} />
@@ -2362,7 +2410,22 @@ function PracticeView({
 
       <div className="practice-layout">
         <article className="question-panel">
-          {!canUseCurrentQuestion ? (
+          {contentLoading ? (
+            <div className="empty-state">
+              <BookOpen aria-hidden="true" size={24} />
+              <p>Loading a secure question set...</p>
+            </div>
+          ) : contentError ? (
+            <div className="empty-state">
+              <Lock aria-hidden="true" size={24} />
+              <p>{contentError}</p>
+            </div>
+          ) : !question ? (
+            <div className="empty-state">
+              <BookOpen aria-hidden="true" size={24} />
+              <p>This filter does not have available questions right now. Clear the filters or choose another study area.</p>
+            </div>
+          ) : !canUseCurrentQuestion ? (
             <UpgradePanel
               access={access}
               title="You reached the free practice limit"
@@ -2488,9 +2551,11 @@ function PracticeView({
 
 function SimulationView({
   access,
+  loadStudyContent,
   recordAttempt,
 }: {
   access: AccessState;
+  loadStudyContent: (request: StudyContentRequest) => Promise<StudyContentResponse>;
   recordAttempt: (
     question: Question,
     selectedIndex: number,
@@ -2508,16 +2573,15 @@ function SimulationView({
   const [finished, setFinished] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(0);
+  const [availableQuestionCount, setAvailableQuestionCount] = useState(0);
+  const [isLoadingCount, setIsLoadingCount] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const [contentError, setContentError] = useState("");
 
   const activeQuestion = simulationQuestions[index];
   const selectedIndex = activeQuestion ? answers[activeQuestion.id] : undefined;
   const selectedModel = examModels.find((model) => model.id === examModel)!;
   const simulationSizes = examModel === "2026" ? [12, 24, 60, 122] : [20, 50, 85, 170];
-  const questionPool = access.hasFullAccess ? questions : freeSampleQuestions;
-  const availableQuestionCount =
-    areaFilter === "all"
-      ? questionPool.length
-      : questionPool.filter((question) => getQuestionArea(question, examModel) === areaFilter).length;
   const accessCapacity = access.hasFullAccess
     ? Number.POSITIVE_INFINITY
     : access.isExpired
@@ -2531,6 +2595,8 @@ function SimulationView({
     (access.hasFullAccess || (!access.isExpired && size <= access.remaining));
   const canStartSimulation =
     !access.isLoading &&
+    !isLoadingCount &&
+    !isStarting &&
     selectedSizeAllowed &&
     availableQuestionCount > 0 &&
     (access.hasFullAccess || accessCapacity > 0);
@@ -2546,6 +2612,35 @@ function SimulationView({
     setAreaFilter("all");
     setSize(nextModel === "2026" ? 24 : 50);
   };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAvailableCount() {
+      setIsLoadingCount(true);
+      setContentError("");
+
+      const response = await loadStudyContent({
+        mode: "count",
+        examModel,
+        areaFilter,
+      });
+
+      if (cancelled) return;
+      setAvailableQuestionCount(
+        response.availableCount ??
+          getFilterQuestionCount(examModel, "all", areaFilter, access.hasFullAccess),
+      );
+      setContentError(response.error ?? "");
+      setIsLoadingCount(false);
+    }
+
+    loadAvailableCount();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [access.hasFullAccess, access.isExpired, areaFilter, examModel, loadStudyContent]);
 
   useEffect(() => {
     const allowedSizes = simulationSizes.filter(
@@ -2571,9 +2666,30 @@ function SimulationView({
     return () => window.clearInterval(timer);
   }, [simulationQuestions.length, finished]);
 
-  const startSimulation = () => {
+  const startSimulation = async () => {
     if (!canStartSimulation || !selectedSizeAllowed) return;
-    const nextQuestions = makeSimulation(size, areaFilter, examModel, questionPool);
+
+    setIsStarting(true);
+    setContentError("");
+
+    const response = await loadStudyContent({
+      mode: "simulation",
+      examModel,
+      areaFilter,
+      size,
+    });
+    const nextQuestions = response.questions ?? [];
+
+    if (typeof response.availableCount === "number") {
+      setAvailableQuestionCount(response.availableCount);
+    }
+
+    if (response.error || !nextQuestions.length) {
+      setContentError(response.error ?? "No questions are available for this simulation setup.");
+      setIsStarting(false);
+      return;
+    }
+
     setSimulationQuestions(nextQuestions);
     setAnswers({});
     setFlagged([]);
@@ -2581,6 +2697,7 @@ function SimulationView({
     setFinished(false);
     setIsFinishing(false);
     setSecondsLeft(timerMinutes * 60);
+    setIsStarting(false);
   };
 
   const finishSimulation = async () => {
@@ -2664,6 +2781,12 @@ function SimulationView({
                 }
               />
             )}
+            {contentError && (
+              <div className="empty-state">
+                <Lock aria-hidden="true" size={22} />
+                <p>{contentError}</p>
+              </div>
+            )}
             <button
               className="primary-action"
               type="button"
@@ -2671,7 +2794,7 @@ function SimulationView({
               disabled={!canStartSimulation || !selectedSizeAllowed}
             >
               <Play aria-hidden="true" size={18} />
-              Start simulation
+              {isStarting ? "Loading..." : "Start simulation"}
             </button>
           </section>
 
@@ -2689,8 +2812,10 @@ function SimulationView({
                 : selectedModel.focus}
             </p>
             <p className="muted">
-              Practice questions available in this model: {questions.length}.
-              {!access.hasFullAccess && ` Free sample questions available now: ${availableQuestionCount}.`}
+              Practice questions available in this model: {questionBankTotal}.
+              {isLoadingCount
+                ? " Checking available sample questions..."
+                : !access.hasFullAccess && ` Free sample questions available now: ${availableQuestionCount}.`}
             </p>
           </aside>
         </div>
@@ -2855,22 +2980,51 @@ function SimulationView({
 
 function FlashcardView({
   access,
+  loadStudyContent,
   setView,
 }: {
   access: AccessState;
+  loadStudyContent: (request: StudyContentRequest) => Promise<StudyContentResponse>;
   setView: (view: View) => void;
 }) {
   const [domainFilter, setDomainFilter] = useState<DomainId | "all">("all");
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
+  const [cards, setCards] = useState<Flashcard[]>([]);
+  const [isLoadingCards, setIsLoadingCards] = useState(false);
+  const [contentError, setContentError] = useState("");
 
-  const filteredCards = useMemo(() => {
-    if (domainFilter === "all") return flashcards;
-    return flashcards.filter((card) => card.domain === domainFilter);
-  }, [domainFilter]);
+  const card = cards.length ? cards[index % cards.length] : null;
+  const domain = card ? domainMap.get(card.domain)! : null;
 
-  const card = filteredCards[index % filteredCards.length];
-  const domain = domainMap.get(card.domain)!;
+  useEffect(() => {
+    if (!access.hasFullAccess) return undefined;
+
+    let cancelled = false;
+
+    async function loadCards() {
+      setIsLoadingCards(true);
+      setContentError("");
+
+      const response = await loadStudyContent({
+        mode: "flashcards",
+        domainFilter,
+      });
+
+      if (cancelled) return;
+      setCards(response.flashcards ?? []);
+      setIndex(0);
+      setFlipped(false);
+      setContentError(response.error ?? "");
+      setIsLoadingCards(false);
+    }
+
+    loadCards();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [access.hasFullAccess, domainFilter, loadStudyContent]);
 
   const changeFilter = (domainId: DomainId | "all") => {
     setDomainFilter(domainId);
@@ -2879,7 +3033,8 @@ function FlashcardView({
   };
 
   const nextCard = () => {
-    setIndex((current) => (current + 1) % filteredCards.length);
+    if (!cards.length) return;
+    setIndex((current) => (current + 1) % cards.length);
     setFlipped(false);
   };
 
@@ -2948,27 +3103,46 @@ function FlashcardView({
         </div>
       </div>
 
-      <button
-        type="button"
-        className={`flashcard ${flipped ? "is-flipped" : ""}`}
-        onClick={() => setFlipped((current) => !current)}
-      >
-        <span className="domain-chip" style={{ borderColor: domain.color }}>
-          {domain.shortName}
-        </span>
-        <strong>{flipped ? card.back : card.front}</strong>
-        <small>{flipped ? "Answer" : "Prompt"}</small>
-      </button>
+      {isLoadingCards ? (
+        <div className="empty-state">
+          <Layers3 aria-hidden="true" size={24} />
+          <p>Loading flashcards...</p>
+        </div>
+      ) : contentError ? (
+        <div className="empty-state">
+          <Lock aria-hidden="true" size={24} />
+          <p>{contentError}</p>
+        </div>
+      ) : card && domain ? (
+        <>
+          <button
+            type="button"
+            className={`flashcard ${flipped ? "is-flipped" : ""}`}
+            onClick={() => setFlipped((current) => !current)}
+          >
+            <span className="domain-chip" style={{ borderColor: domain.color }}>
+              {domain.shortName}
+            </span>
+            <strong>{flipped ? card.back : card.front}</strong>
+            <small>{flipped ? "Answer" : "Prompt"}</small>
+          </button>
 
-      <div className="question-actions">
-        <button className="secondary-action" type="button" onClick={() => setFlipped(false)}>
-          Front
-        </button>
-        <button className="primary-action" type="button" onClick={nextCard}>
-          Next card
-          <ChevronRight aria-hidden="true" size={18} />
-        </button>
-      </div>
+          <div className="question-actions">
+            <button className="secondary-action" type="button" onClick={() => setFlipped(false)}>
+              Front
+            </button>
+            <button className="primary-action" type="button" onClick={nextCard}>
+              Next card
+              <ChevronRight aria-hidden="true" size={18} />
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="empty-state">
+          <Layers3 aria-hidden="true" size={24} />
+          <p>No flashcards are available for this filter yet.</p>
+        </div>
+      )}
     </section>
   );
 }

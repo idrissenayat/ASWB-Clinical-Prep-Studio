@@ -4,7 +4,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
-export const isAccountAccessRequired = import.meta.env.VITE_REQUIRE_AUTH === "true";
+export const isAccountAccessRequired = import.meta.env.VITE_REQUIRE_AUTH !== "false";
 
 export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl!, supabaseAnonKey!, {

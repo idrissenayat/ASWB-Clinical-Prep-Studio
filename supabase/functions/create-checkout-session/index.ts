@@ -100,7 +100,10 @@ serve(async (req) => {
     "payment_intent_data[metadata][access_days]": "180",
   });
 
-  if (user.email) params.set("customer_email", user.email);
+  if (user.email) {
+    params.set("customer_email", user.email);
+    params.set("payment_intent_data[receipt_email]", user.email);
+  }
 
   const stripeResponse = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",

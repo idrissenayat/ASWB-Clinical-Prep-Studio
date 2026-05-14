@@ -1420,26 +1420,6 @@ input:disabled,
   border-color: #cf5a3d;
 }
 
-.confidence-row {
-  display: grid;
-  grid-template-columns: auto minmax(160px, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  background: #f8f1e6;
-  border: 1px solid #e1d5c5;
-  border-radius: 8px;
-}
-
-.confidence-row label,
-.confidence-row strong {
-  font-weight: 900;
-}
-
-.confidence-row input {
-  accent-color: #257c7a;
-}
-
 .rationale-box {
   display: grid;
   gap: 8px;
@@ -1961,10 +1941,6 @@ input:disabled,
 
   .option-button svg {
     grid-column: 2;
-  }
-
-  .confidence-row {
-    grid-template-columns: 1fr;
   }
 
   .question-actions.split {

@@ -149,6 +149,7 @@ const minimumPasswordLength = 8;
 const freeQuestionLimit = 75;
 const paidAccessDays = 180;
 const accessPriceLabel = "$49";
+const defaultAttemptConfidence = 3;
 
 const navItems: Array<{ id: View; label: string; icon: typeof BarChart3 }> = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
@@ -2188,7 +2189,6 @@ function PracticeView({
   const [index, setIndex] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(false);
-  const [confidence, setConfidence] = useState(3);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [practiceQueue, setPracticeQueue] = useState<Question[]>([]);
   const [contentLoading, setContentLoading] = useState(false);
@@ -2215,7 +2215,6 @@ function PracticeView({
   const resetQuestionState = () => {
     setSelectedIndex(null);
     setRevealed(false);
-    setConfidence(3);
   };
 
   const loadPracticeSet = useCallback(
@@ -2298,7 +2297,7 @@ function PracticeView({
     if (!question || selectedIndex === null || revealed || !canAnswer || isSubmitting) return;
     setIsSubmitting(true);
     const correct = selectedIndex === question.answerIndex;
-    recordAttempt(question, selectedIndex, confidence, examModel).then((wasRecorded) => {
+    recordAttempt(question, selectedIndex, defaultAttemptConfidence, examModel).then((wasRecorded) => {
       setIsSubmitting(false);
       if (!wasRecorded) return;
       setSessionStats((current) => ({
@@ -2490,21 +2489,6 @@ function PracticeView({
                     </button>
                   );
                 })}
-              </div>
-
-              <div className="confidence-row">
-                <label htmlFor="confidence">Confidence</label>
-                <input
-                  id="confidence"
-                  min="1"
-                  max="5"
-                  step="1"
-                  type="range"
-                  value={confidence}
-                  onChange={(event) => setConfidence(Number(event.target.value))}
-                  disabled={revealed || !canAnswer}
-                />
-                <strong>{confidence}/5</strong>
               </div>
 
               {revealed && (
@@ -2875,7 +2859,7 @@ function SimulationView({
           ) : (
             <div className="empty-state">
               <CheckCircle2 aria-hidden="true" size={24} />
-              <p>Clean run. Keep rotating domains so the confidence is earned.</p>
+              <p>Clean run. Keep rotating domains so the score is earned.</p>
             </div>
           )}
         </section>

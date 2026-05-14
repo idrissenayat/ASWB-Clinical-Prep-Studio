@@ -420,7 +420,7 @@ export const planTasks = [
     id: "plan-6",
     week: "Intervention",
     title: "Run a timed sprint",
-    detail: "Complete a timed simulation, then review every missed or low-confidence item.",
+    detail: "Complete a timed simulation, then review every missed or flagged item.",
   },
   {
     id: "plan-7",

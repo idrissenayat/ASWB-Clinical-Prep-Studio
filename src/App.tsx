@@ -131,6 +131,49 @@ interface StudyContentResponse {
   error?: string;
 }
 
+type QuestionEventSource = "practice" | "simulation";
+type QuestionFeedbackType =
+  | "too_easy"
+  | "confusing"
+  | "answer_wrong"
+  | "bad_distractor"
+  | "not_realistic"
+  | "typo"
+  | "other";
+
+interface QuestionQualityRow {
+  question_id: string;
+  domain: DomainId;
+  area: ExamAreaId;
+  area_2026: ExamAreaId;
+  attempts: number;
+  correct_rate: number;
+  avg_response_seconds: number | null;
+  feedback_count: number;
+  too_easy_count: number;
+  confusing_count: number;
+  answer_wrong_count: number;
+  bad_distractor_count: number;
+  not_realistic_count: number;
+  typo_count: number;
+  needs_review: boolean;
+}
+
+interface QuestionQualitySummary {
+  attemptsCount: number;
+  feedbackCount: number;
+  questionsNeedingReview: number;
+  reviewQueue: QuestionQualityRow[];
+}
+
+interface QuestionFeedbackRequest {
+  question: Question;
+  examModel: ExamModelId;
+  feedbackType: QuestionFeedbackType;
+  source: QuestionEventSource;
+  note?: string;
+}
+
 type SyncStatus = "local" | "loading" | "synced" | "saving" | "error";
 type AuthMode = "sign-in" | "sign-up" | "reset-password";
 type AccessPlan = "free" | "paid";
@@ -150,6 +193,14 @@ const freeQuestionLimit = 75;
 const paidAccessDays = 180;
 const accessPriceLabel = "$49";
 const defaultAttemptConfidence = 3;
+const feedbackOptions: Array<{ type: QuestionFeedbackType; label: string }> = [
+  { type: "too_easy", label: "Too easy" },
+  { type: "confusing", label: "Confusing" },
+  { type: "answer_wrong", label: "Answer seems wrong" },
+  { type: "bad_distractor", label: "Bad distractor" },
+  { type: "not_realistic", label: "Not realistic" },
+  { type: "typo", label: "Typo" },
+];
 
 const navItems: Array<{ id: View; label: string; icon: typeof BarChart3 }> = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
@@ -389,6 +440,25 @@ function parseFreeQuestionConsumption(value: unknown) {
   };
 }
 
+function parseQuestionQualitySummary(value: unknown): QuestionQualitySummary {
+  const fallback: QuestionQualitySummary = {
+    attemptsCount: 0,
+    feedbackCount: 0,
+    questionsNeedingReview: 0,
+    reviewQueue: [],
+  };
+
+  if (!value || typeof value !== "object") return fallback;
+  const result = value as Partial<QuestionQualitySummary>;
+
+  return {
+    attemptsCount: Number(result.attemptsCount) || 0,
+    feedbackCount: Number(result.feedbackCount) || 0,
+    questionsNeedingReview: Number(result.questionsNeedingReview) || 0,
+    reviewQueue: Array.isArray(result.reviewQueue) ? result.reviewQueue : [],
+  };
+}
+
 function formatTime(minutes: number) {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
@@ -520,6 +590,9 @@ function App() {
   const [accessError, setAccessError] = useState("");
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
+  const [qualitySummary, setQualitySummary] = useState<QuestionQualitySummary | null>(null);
+  const [qualityLoading, setQualityLoading] = useState(false);
+  const [qualityError, setQualityError] = useState("");
   const lastRemoteFingerprint = useRef("");
   const remoteSaveTimer = useRef<number | null>(null);
   const activeProfile =
@@ -568,6 +641,9 @@ function App() {
         setAccessLoading(false);
         setAccessError("");
         setCheckoutError("");
+        setQualitySummary(null);
+        setQualityLoading(false);
+        setQualityError("");
       }
     });
 
@@ -821,6 +897,81 @@ function App() {
     [session?.user?.id],
   );
 
+  const loadQuestionQualitySummary = useCallback(async () => {
+    if (!supabase || !session) return;
+
+    setQualityLoading(true);
+    setQualityError("");
+    const { data, error } = await supabase.functions.invoke("question-quality", {
+      body: { mode: "summary" },
+    });
+    setQualityLoading(false);
+
+    if (error) {
+      setQualityError(error.message);
+      return;
+    }
+
+    setQualitySummary(parseQuestionQualitySummary(data));
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (!supabase || !session) return;
+    void loadQuestionQualitySummary();
+  }, [loadQuestionQualitySummary, session?.user?.id]);
+
+  const recordQuestionAttemptEvent = useCallback(
+    async ({
+      question,
+      examModel,
+      selectedIndex,
+      source,
+      responseSeconds,
+    }: {
+      question: Question;
+      examModel: ExamModelId;
+      selectedIndex: number;
+      source: QuestionEventSource;
+      responseSeconds?: number | null;
+    }) => {
+      if (!supabase || !session) return;
+
+      await supabase.functions.invoke("question-quality", {
+        body: {
+          mode: "record_attempt",
+          questionId: question.id,
+          examModel,
+          selectedIndex,
+          source,
+          responseSeconds: responseSeconds ?? null,
+        },
+      });
+    },
+    [session?.user?.id],
+  );
+
+  const submitQuestionFeedback = useCallback(
+    async ({ question, examModel, feedbackType, source, note }: QuestionFeedbackRequest) => {
+      if (!supabase || !session) return { ok: false, error: "Sign in before submitting feedback." };
+
+      const { error } = await supabase.functions.invoke("question-quality", {
+        body: {
+          mode: "submit_feedback",
+          questionId: question.id,
+          examModel,
+          feedbackType,
+          source,
+          note,
+        },
+      });
+
+      if (error) return { ok: false, error: error.message };
+      void loadQuestionQualitySummary();
+      return { ok: true, error: "" };
+    },
+    [loadQuestionQualitySummary, session?.user?.id],
+  );
+
   const accessState: AccessState = {
     plan: accessPlan,
     status: accessStatus,
@@ -889,9 +1040,12 @@ function App() {
     selectedIndex: number,
     confidence: number,
     examModel: ExamModelId = defaultExamModel,
+    source: QuestionEventSource = "practice",
+    responseSeconds?: number | null,
   ) => {
     const canRecord = await consumeQuestionAccess();
     if (!canRecord) return false;
+    const isCorrect = selectedIndex === question.answerIndex;
 
     setProgress((current) => ({
       ...current,
@@ -903,12 +1057,21 @@ function App() {
           examModel,
           area: getQuestionArea(question, examModel),
           selectedIndex,
-          correct: selectedIndex === question.answerIndex,
+          correct: isCorrect,
           confidence,
           timestamp: new Date().toISOString(),
         },
       ],
     }));
+
+    void recordQuestionAttemptEvent({
+      question,
+      examModel,
+      selectedIndex,
+      source,
+      responseSeconds,
+    });
+
     return true;
   };
 
@@ -1028,6 +1191,9 @@ function App() {
           progress={progress}
           accountEmail={session?.user.email ?? ""}
           access={accessState}
+          qualitySummary={qualitySummary}
+          qualityLoading={qualityLoading}
+          qualityError={qualityError}
           setView={setView}
           resetProgress={resetProgress}
         />
@@ -1037,6 +1203,7 @@ function App() {
           progress={progress}
           access={accessState}
           loadStudyContent={loadStudyContent}
+          submitQuestionFeedback={submitQuestionFeedback}
           recordAttempt={recordAttempt}
           toggleBookmark={toggleBookmark}
         />
@@ -1045,6 +1212,7 @@ function App() {
         <SimulationView
           access={accessState}
           loadStudyContent={loadStudyContent}
+          submitQuestionFeedback={submitQuestionFeedback}
           recordAttempt={recordAttempt}
         />
       )}
@@ -1757,6 +1925,9 @@ function Dashboard({
   progress,
   accountEmail,
   access,
+  qualitySummary,
+  qualityLoading,
+  qualityError,
   setView,
   resetProgress,
 }: {
@@ -1764,6 +1935,9 @@ function Dashboard({
   progress: ProgressState;
   accountEmail: string;
   access: AccessState;
+  qualitySummary: QuestionQualitySummary | null;
+  qualityLoading: boolean;
+  qualityError: string;
   setView: (view: View) => void;
   resetProgress: () => void;
 }) {
@@ -2069,6 +2243,68 @@ function Dashboard({
           </button>
         </aside>
       </div>
+
+      <section className="panel">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Question quality</p>
+            <h3>Review signals</h3>
+          </div>
+          <span className="pill">{qualityLoading ? "Loading" : `${qualitySummary?.questionsNeedingReview ?? 0} need review`}</span>
+        </div>
+        <p className="muted">
+          This tracks live answer data and learner flags so weak items can be rewritten instead
+          of staying in the bank.
+        </p>
+        {qualityError ? (
+          <div className="empty-state">
+            <Flag aria-hidden="true" size={22} />
+            <p>{qualityError}</p>
+          </div>
+        ) : (
+          <>
+            <div className="quality-metrics" aria-label="Question quality metrics">
+              <div>
+                <span>Attempts tracked</span>
+                <strong>{qualitySummary?.attemptsCount ?? 0}</strong>
+              </div>
+              <div>
+                <span>Learner flags</span>
+                <strong>{qualitySummary?.feedbackCount ?? 0}</strong>
+              </div>
+              <div>
+                <span>Review queue</span>
+                <strong>{qualitySummary?.questionsNeedingReview ?? 0}</strong>
+              </div>
+            </div>
+
+            {qualitySummary?.reviewQueue.length ? (
+              <div className="quality-list">
+                {qualitySummary.reviewQueue.map((item) => {
+                  const itemDomain = domainMap.get(item.domain);
+                  return (
+                    <article className="quality-row" key={item.question_id}>
+                      <span style={{ backgroundColor: itemDomain?.color }} aria-hidden="true" />
+                      <div>
+                        <strong>{item.question_id}</strong>
+                        <p>
+                          {itemDomain?.shortName} · {item.area_2026}/{item.area} ·{" "}
+                          {Math.round(item.correct_rate * 100)}% correct · {item.feedback_count} flags
+                        </p>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="empty-state">
+                <CheckCircle2 aria-hidden="true" size={22} />
+                <p>No question has crossed the review threshold yet.</p>
+              </div>
+            )}
+          </>
+        )}
+      </section>
     </section>
   );
 }
@@ -2169,17 +2405,21 @@ function PracticeView({
   progress,
   access,
   loadStudyContent,
+  submitQuestionFeedback,
   recordAttempt,
   toggleBookmark,
 }: {
   progress: ProgressState;
   access: AccessState;
   loadStudyContent: (request: StudyContentRequest) => Promise<StudyContentResponse>;
+  submitQuestionFeedback: (request: QuestionFeedbackRequest) => Promise<{ ok: boolean; error: string }>;
   recordAttempt: (
     question: Question,
     selectedIndex: number,
     confidence: number,
     examModel?: ExamModelId,
+    source?: QuestionEventSource,
+    responseSeconds?: number | null,
   ) => Promise<boolean>;
   toggleBookmark: (questionId: string) => void;
 }) {
@@ -2193,6 +2433,7 @@ function PracticeView({
   const [practiceQueue, setPracticeQueue] = useState<Question[]>([]);
   const [contentLoading, setContentLoading] = useState(false);
   const [contentError, setContentError] = useState("");
+  const [questionStartedAt, setQuestionStartedAt] = useState(Date.now());
   const [sessionStats, setSessionStats] = useState({
     answered: 0,
     correct: 0,
@@ -2211,6 +2452,10 @@ function PracticeView({
     : 0;
   const canAnswer = access.hasFullAccess || (!access.isExpired && access.remaining > 0);
   const canUseCurrentQuestion = Boolean(question) && (canAnswer || revealed);
+
+  useEffect(() => {
+    setQuestionStartedAt(Date.now());
+  }, [question?.id]);
 
   const resetQuestionState = () => {
     setSelectedIndex(null);
@@ -2297,7 +2542,15 @@ function PracticeView({
     if (!question || selectedIndex === null || revealed || !canAnswer || isSubmitting) return;
     setIsSubmitting(true);
     const correct = selectedIndex === question.answerIndex;
-    recordAttempt(question, selectedIndex, defaultAttemptConfidence, examModel).then((wasRecorded) => {
+    const responseSeconds = Math.max(0, Math.round((Date.now() - questionStartedAt) / 1000));
+    recordAttempt(
+      question,
+      selectedIndex,
+      defaultAttemptConfidence,
+      examModel,
+      "practice",
+      responseSeconds,
+    ).then((wasRecorded) => {
       setIsSubmitting(false);
       if (!wasRecorded) return;
       setSessionStats((current) => ({
@@ -2496,6 +2749,12 @@ function PracticeView({
                   <strong>{selectedIndex === question!.answerIndex ? "Correct" : "Review this one"}</strong>
                   <p>{question!.rationale}</p>
                   <p className="exam-lens">{question!.examLens}</p>
+                  <QuestionFeedbackPanel
+                    question={question!}
+                    examModel={examModel}
+                    source="practice"
+                    submitQuestionFeedback={submitQuestionFeedback}
+                  />
                 </div>
               )}
 
@@ -2533,18 +2792,69 @@ function PracticeView({
   );
 }
 
+function QuestionFeedbackPanel({
+  question,
+  examModel,
+  source,
+  submitQuestionFeedback,
+}: {
+  question: Question;
+  examModel: ExamModelId;
+  source: QuestionEventSource;
+  submitQuestionFeedback: (request: QuestionFeedbackRequest) => Promise<{ ok: boolean; error: string }>;
+}) {
+  const [submittingType, setSubmittingType] = useState<QuestionFeedbackType | null>(null);
+  const [message, setMessage] = useState("");
+
+  const submitFeedback = async (feedbackType: QuestionFeedbackType) => {
+    setSubmittingType(feedbackType);
+    setMessage("");
+    const result = await submitQuestionFeedback({
+      question,
+      examModel,
+      feedbackType,
+      source,
+    });
+    setSubmittingType(null);
+    setMessage(result.ok ? "Feedback saved." : result.error);
+  };
+
+  return (
+    <div className="question-feedback" aria-label="Question quality feedback">
+      <span>Flag this item</span>
+      <div>
+        {feedbackOptions.map((option) => (
+          <button
+            key={option.type}
+            type="button"
+            onClick={() => void submitFeedback(option.type)}
+            disabled={submittingType !== null}
+          >
+            {submittingType === option.type ? "Saving..." : option.label}
+          </button>
+        ))}
+      </div>
+      {message && <small>{message}</small>}
+    </div>
+  );
+}
+
 function SimulationView({
   access,
   loadStudyContent,
+  submitQuestionFeedback,
   recordAttempt,
 }: {
   access: AccessState;
   loadStudyContent: (request: StudyContentRequest) => Promise<StudyContentResponse>;
+  submitQuestionFeedback: (request: QuestionFeedbackRequest) => Promise<{ ok: boolean; error: string }>;
   recordAttempt: (
     question: Question,
     selectedIndex: number,
     confidence: number,
     examModel?: ExamModelId,
+    source?: QuestionEventSource,
+    responseSeconds?: number | null,
   ) => Promise<boolean>;
 }) {
   const [examModel, setExamModel] = useState<ExamModelId>(defaultExamModel);
@@ -2691,7 +3001,14 @@ function SimulationView({
     for (const question of simulationQuestions) {
       const answer = answers[question.id];
       if (answer !== undefined) {
-        const wasRecorded = await recordAttempt(question, answer, 3, examModel);
+        const wasRecorded = await recordAttempt(
+          question,
+          answer,
+          defaultAttemptConfidence,
+          examModel,
+          "simulation",
+          null,
+        );
         if (!wasRecorded) break;
       }
     }
@@ -2852,6 +3169,12 @@ function SimulationView({
                   <div>
                     <strong>{question.stem}</strong>
                     <p>{question.rationale}</p>
+                    <QuestionFeedbackPanel
+                      question={question}
+                      examModel={examModel}
+                      source="simulation"
+                      submitQuestionFeedback={submitQuestionFeedback}
+                    />
                   </div>
                 </article>
               ))}

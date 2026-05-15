@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.secure-study-content]
 verify_jwt = true
+
+[functions.question-quality]
+verify_jwt = true
